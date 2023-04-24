@@ -1,0 +1,72 @@
+use std::sync::Arc;
+
+use anyhow::Context;
+use log::info;
+use vulkano::{
+    device::{
+        physical::PhysicalDevice, Device, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFlags,
+    },
+    instance::Instance,
+    memory::allocator::StandardMemoryAllocator,
+    swapchain::Surface,
+};
+
+pub struct RenderDevice {
+    physical_device: Arc<PhysicalDevice>,
+    queue_family_index: u32,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    memory_allocator: StandardMemoryAllocator,
+}
+
+impl RenderDevice {
+    pub fn new(instance: Arc<Instance>, surface: Arc<Surface>) -> anyhow::Result<RenderDevice> {
+        let physical_device = instance
+            .enumerate_physical_devices()
+            .expect("Could not enumerate device")
+            .next()
+            .context("No Physical Devices available")?;
+
+        info!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
+        let queue_family_index = physical_device
+            .queue_family_properties()
+            .iter()
+            .enumerate()
+            .position(|(_queue_family_index, queue_family_properties)| {
+                queue_family_properties
+                    .queue_flags
+                    .contains(QueueFlags::GRAPHICS)
+            })
+            .context("Couldn't find a graphics queue")?;
+
+        let q32 = u32::try_from(queue_family_index).expect("Queue Family Index error");
+
+        let (device, mut queues) = Device::new(
+            physical_device.clone(),
+            DeviceCreateInfo {
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index: q32,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )
+        .context("Failed to create device")?;
+
+        let queue = queues.next().expect("No suitable queues were found");
+
+        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        Ok(RenderDevice {
+            physical_device,
+            queue_family_index: q32,
+            device,
+            queue,
+            memory_allocator,
+        })
+    }
+}

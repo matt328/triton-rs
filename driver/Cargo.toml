@@ -1,0 +1,10 @@
+[package]
+name = "driver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.70"
+log = "0.4.17"
+log4rs = "1.2.0"
+triton = { path = "../triton" }
