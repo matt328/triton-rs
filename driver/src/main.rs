@@ -1,4 +1,5 @@
 use anyhow::Context;
+
 use triton::Application;
 
 fn main() -> anyhow::Result<()> {

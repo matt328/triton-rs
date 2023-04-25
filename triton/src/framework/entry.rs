@@ -14,14 +14,18 @@ use winit::{
     window::WindowBuilder,
 };
 
+use super::graphics::GraphicsContext;
+
 pub struct Game {
-    instance: Arc<Instance>,
-    surface: Arc<Surface>,
+    graphics_context: GraphicsContext,
 }
 
 impl Game {
     pub fn new(instance: Arc<Instance>, surface: Arc<Surface>) -> anyhow::Result<Game> {
-        Ok(Game { instance, surface })
+        Ok(Game {
+            graphics_context: GraphicsContext::new(instance.clone(), surface.clone())
+                .context("Game creating graphics context")?,
+        })
     }
 
     pub fn update(&self) {

@@ -4,15 +4,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'triton-rs'",
+            "name": "Debug executable 'driver'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=triton-rs",
-                    "--package=triton-rs"
+                    "--bin=driver",
+                    "--package=driver"
                 ],
                 "filter": {
-                    "name": "triton-rs",
+                    "name": "driver",
                     "kind": "bin"
                 }
             },
@@ -22,16 +22,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'triton-rs'",
+            "name": "Debug unit tests in executable 'driver'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=triton-rs",
-                    "--package=triton-rs"
+                    "--bin=driver",
+                    "--package=driver"
                 ],
                 "filter": {
-                    "name": "triton-rs",
+                    "name": "driver",
                     "kind": "bin"
                 }
             },
