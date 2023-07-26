@@ -29,11 +29,11 @@ impl Game {
     }
 
     pub fn update(&self) {
-        info!("update");
+        // info!("update");
     }
 
     pub fn render(&self, blending_factor: f64) {
-        info!("Render: {}", blending_factor);
+        // info!("Render: {}", blending_factor);
     }
 
     pub fn window_handler(&self, event: &Event<()>) -> bool {
