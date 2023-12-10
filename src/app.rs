@@ -1,18 +1,20 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use log::info;
 use vulkano::swapchain::Surface;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
-    window::WindowBuilder,
+    window::{Window, WindowBuilder},
 };
 
-use crate::graphics::Game;
+use crate::game::Game;
 
 pub struct App {
     event_loop: EventLoop<()>,
     game: Game,
+    window: Arc<Window>,
 }
 
 impl App {
@@ -24,7 +26,11 @@ impl App {
 
         let game = Game::new(required_extensions, window.clone())?;
 
-        Ok(App { event_loop, game })
+        Ok(App {
+            event_loop,
+            game,
+            window,
+        })
     }
 
     pub fn run(mut self) -> anyhow::Result<()> {
@@ -43,6 +49,9 @@ impl App {
                         ..
                     } => {
                         self.game.resize(new_size);
+                    }
+                    Event::AboutToWait => {
+                        self.window.request_redraw();
                     }
                     Event::WindowEvent {
                         event: WindowEvent::RedrawRequested,

@@ -4,7 +4,7 @@ appenders:
   stdout:
     kind: console
     encoder:
-      pattern: "{d(%l:%M:%S%.3f)} | {h({l:<5})} | {({f}:{L}):20.20} - {m}{n}"
+      pattern: "{d(%l:%M:%S)} | {h({l:<5})} | {({f}:{L}):20.20} - {m}{n}"
 
 root:
   level: debug

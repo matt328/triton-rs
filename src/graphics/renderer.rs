@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use log::info;
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferExecFuture,
@@ -94,6 +95,11 @@ impl Renderer {
 
         let (physical_device, queue_family_index) =
             helpers::select_physical_device(&instance, &surface, &device_extensions)?;
+
+        info!(
+            "Current Graphics Device is {}",
+            physical_device.properties().device_name
+        );
 
         let (device, mut queues) = Device::new(
             physical_device.clone(),
