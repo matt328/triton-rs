@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use vulkano::{
     buffer::BufferContents,
     device::Device,
     pipeline::{
         graphics::{
-            color_blend::ColorBlendState,
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
@@ -15,10 +16,10 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
+    swapchain::Swapchain,
 };
-use vulkano_util::renderer::VulkanoWindowRenderer;
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -59,21 +60,19 @@ pub mod fs {
 
 pub fn create_pipeline(
     device: &Arc<Device>,
-    renderer: &VulkanoWindowRenderer,
-) -> Arc<GraphicsPipeline> {
+    swapchain: &Swapchain,
+) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let pipeline = {
-        let vs = vs::load(device.clone())
-            .unwrap()
+        let vs = vs::load(device.clone())?
             .entry_point("main")
-            .unwrap();
-        let fs = fs::load(device.clone())
-            .unwrap()
+            .context("Loading Vertex Shader")?;
+        let fs = fs::load(device.clone())?
             .entry_point("main")
-            .unwrap();
+            .context("Loading Fragment Shader")?;
 
         let vertex_input_state = Position::per_vertex()
             .definition(&vs.info().input_interface)
-            .unwrap();
+            .context("Creating Vertex Input State")?;
 
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),
@@ -84,12 +83,12 @@ pub fn create_pipeline(
             device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
                 .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
+                .context("Creating DSL CreateInfo")?,
         )
-        .unwrap();
+        .context("Creating DSL")?;
 
         let subpass = PipelineRenderingCreateInfo {
-            color_attachment_formats: vec![Some(renderer.swapchain_format())],
+            color_attachment_formats: vec![Some(swapchain.image_format())],
             ..Default::default()
         };
 
@@ -100,17 +99,19 @@ pub fn create_pipeline(
                 stages: stages.into_iter().collect(),
                 vertex_input_state: Some(vertex_input_state),
                 input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                viewport_state: Some(ViewportState::default()),
                 rasterization_state: Some(RasterizationState::default()),
                 multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::new(
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
                     subpass.color_attachment_formats.len() as u32,
+                    ColorBlendAttachmentState::default(),
                 )),
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(layout)
             },
         )
-        .unwrap()
+        .context("Creating Pipeline")?
     };
-    pipeline
+    Ok(pipeline)
 }
