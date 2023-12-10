@@ -35,7 +35,6 @@ use super::{
 pub struct Renderer {
     device: Arc<Device>,
     swapchain: Arc<Swapchain>,
-    render_pass: Arc<RenderPass>,
 
     viewport: Viewport,
     window_resized: bool,
@@ -47,6 +46,8 @@ pub struct Renderer {
 
     command_buffer_allocator: StandardCommandBufferAllocator,
     queue: Arc<Queue>,
+
+    render_pass: Arc<RenderPass>,
 
     previous_fence_i: u32,
     command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,

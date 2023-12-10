@@ -8,11 +8,11 @@ use winit::{
     window::WindowBuilder,
 };
 
-use crate::graphics::Renderer;
+use crate::graphics::Game;
 
 pub struct App {
     event_loop: EventLoop<()>,
-    renderer: Renderer,
+    game: Game,
 }
 
 impl App {
@@ -22,12 +22,9 @@ impl App {
 
         let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
-        let renderer = Renderer::new(required_extensions, window.clone())?;
+        let game = Game::new(required_extensions, window.clone())?;
 
-        Ok(App {
-            event_loop,
-            renderer,
-        })
+        Ok(App { event_loop, game })
     }
 
     pub fn run(mut self) -> anyhow::Result<()> {
@@ -45,13 +42,13 @@ impl App {
                         event: WindowEvent::Resized(new_size),
                         ..
                     } => {
-                        self.renderer.window_resized(new_size);
+                        self.game.resize(new_size);
                     }
                     Event::WindowEvent {
                         event: WindowEvent::RedrawRequested,
                         ..
                     } => {
-                        let _ = self.renderer.draw();
+                        let _ = self.game.update();
                     }
                     _ => (),
                 }
