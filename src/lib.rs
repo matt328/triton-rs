@@ -1,5 +1,3 @@
-pub mod app;
-
-pub mod shaders;
-
 pub mod data;
+pub mod renderer;
+pub mod shaders;
