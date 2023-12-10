@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use log::info;
 use vulkano::swapchain::Surface;
 use winit::{
     event::{Event, WindowEvent},
@@ -9,11 +8,11 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::game::Game;
+use crate::game::GameLoop;
 
 pub struct App {
     event_loop: EventLoop<()>,
-    game: Game,
+    game: GameLoop,
     window: Arc<Window>,
 }
 
@@ -22,9 +21,13 @@ impl App {
         let event_loop = EventLoop::new().unwrap();
         let required_extensions = Surface::required_extensions(&event_loop);
 
-        let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+        let window = Arc::new(
+            WindowBuilder::new()
+                .with_title("Triton")
+                .build(&event_loop)?,
+        );
 
-        let game = Game::new(required_extensions, window.clone())?;
+        let game = GameLoop::new(required_extensions, window.clone())?;
 
         Ok(App {
             event_loop,

@@ -9,7 +9,7 @@ use vulkano::{
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
-    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::StandardMemoryAllocator,
     pipeline::graphics::viewport::Viewport,
     render_pass::RenderPass,
@@ -32,7 +32,11 @@ use super::{
     mesh::{BasicMesh, MeshBuilder},
     shaders,
 };
-
+type MyJoinFuture = JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>;
+type MyCommandBufferFuture = CommandBufferExecFuture<MyJoinFuture>;
+type MyPresentFuture = PresentFuture<MyCommandBufferFuture>;
+type MyFenceSignalFuture = FenceSignalFuture<MyPresentFuture>;
+type FenceSignalFuturesList = Vec<Option<Arc<MyFenceSignalFuture>>>;
 pub struct Renderer {
     device: Arc<Device>,
     swapchain: Arc<Swapchain>,
@@ -52,19 +56,7 @@ pub struct Renderer {
 
     previous_fence_i: u32,
     command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
-    fences: Vec<
-        Option<
-            Arc<
-                FenceSignalFuture<
-                    PresentFuture<
-                        CommandBufferExecFuture<
-                            JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>,
-                        >,
-                    >,
-                >,
-            >,
-        >,
-    >,
+    fences: FenceSignalFuturesList,
 
     mesh: BasicMesh,
 }

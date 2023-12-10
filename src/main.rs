@@ -1,6 +1,8 @@
 use anyhow::Context;
+#[cfg(feature = "tracing")]
 use log::info;
 use tracing::{span, Level};
+#[cfg(feature = "tracing")]
 use tracing_subscriber::layer::SubscriberExt;
 use triton::app::App;
 

@@ -1,4 +1,4 @@
-pub use game::Game;
+pub use game_loop::GameLoop;
 
-mod game;
+mod game_loop;
 mod state;

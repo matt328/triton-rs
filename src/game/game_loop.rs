@@ -5,13 +5,14 @@ use tracing::{event, span, Level};
 use vulkano::instance::InstanceExtensions;
 use winit::{dpi::PhysicalSize, window::Window};
 
+#[cfg(feature = "tracing")]
 use tracing_tracy::client::frame_mark;
 
 use crate::{game::state::blend_state, graphics::Renderer};
 
 use super::state::{next_state, State};
 
-pub struct Game {
+pub struct GameLoop {
     previous_instant: Instant,
     accumulated_time: f64,
     renderer: Renderer,
@@ -25,7 +26,7 @@ const UPS: f64 = 240.0;
 const MAX_FRAME_TIME: f64 = 1.0 / FPS;
 const FIXED_TIME_STEP: f64 = 1.0 / UPS;
 
-impl Game {
+impl GameLoop {
     pub fn new(
         required_extensions: InstanceExtensions,
         window: Arc<Window>,
@@ -34,7 +35,7 @@ impl Game {
 
         info!("Initialized Game");
 
-        Ok(Game {
+        Ok(GameLoop {
             previous_instant: Instant::now(),
             accumulated_time: 0.0,
             renderer,
