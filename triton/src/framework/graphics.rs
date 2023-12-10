@@ -132,7 +132,7 @@ impl GraphicsContext {
                     ..Default::default()
                 },
             )
-            .unwrap()
+            .context("Creating Swapchain")?
         };
 
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());

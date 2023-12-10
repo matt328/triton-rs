@@ -1,2 +1,2 @@
 [workspace]
-members = ["triton", "driver", "game-loop"]
+members = ["triton", "driver"]
