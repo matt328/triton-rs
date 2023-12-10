@@ -56,7 +56,7 @@ pub mod fs {
     }
 }
 
-pub fn create_pipeline(device: &Arc<Device>) -> Arc<GraphicsPipeline> {
+pub fn create_pipeline(device: &Arc<Device>, swapchain) -> Arc<GraphicsPipeline> {
     let pipeline = {
         let vs = vs::load(device.clone())
             .unwrap()
