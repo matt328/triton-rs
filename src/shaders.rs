@@ -11,7 +11,7 @@ pub mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
         src: r"
-            #version 450
+            #version 460
 
             layout(location = 0) in vec2 position;
 
@@ -26,7 +26,7 @@ pub mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
         src: r"
-            #version 450
+            #version 460
 
             layout(location = 0) out vec4 f_color;
 

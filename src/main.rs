@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use triton::shaders::Position;
 use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -36,43 +37,6 @@ use vulkano::{Validated, VulkanError};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use winit::window::WindowBuilder;
-
-#[derive(BufferContents, Vertex)]
-#[repr(C)]
-struct MyVertex {
-    #[format(R32G32_SFLOAT)]
-    position: [f32; 2],
-}
-
-mod vs {
-    vulkano_shaders::shader! {
-        ty: "vertex",
-        src: r"
-            #version 460
-
-            layout(location = 0) in vec2 position;
-
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-            }
-        ",
-    }
-}
-
-mod fs {
-    vulkano_shaders::shader! {
-        ty: "fragment",
-        src: r"
-            #version 460
-
-            layout(location = 0) out vec4 f_color;
-
-            void main() {
-                f_color = vec4(1.0, 0.0, 0.0, 1.0);
-            }
-        ",
-    }
-}
 
 pub fn select_physical_device(
     instance: &Arc<Instance>,
@@ -149,7 +113,7 @@ fn get_pipeline(
     let vs = vs.entry_point("main").unwrap();
     let fs = fs.entry_point("main").unwrap();
 
-    let vertex_input_state = MyVertex::per_vertex()
+    let vertex_input_state = Position::per_vertex()
         .definition(&vs.info().input_interface)
         .unwrap();
 
@@ -197,7 +161,7 @@ fn get_command_buffers(
     queue: &Arc<Queue>,
     pipeline: &Arc<GraphicsPipeline>,
     framebuffers: &[Arc<Framebuffer>],
-    vertex_buffer: &Subbuffer<[MyVertex]>,
+    vertex_buffer: &Subbuffer<[Position]>,
 ) -> Vec<Arc<PrimaryAutoCommandBuffer>> {
     framebuffers
         .iter()
@@ -308,13 +272,13 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    let vertex1 = MyVertex {
+    let vertex1 = Position {
         position: [-0.5, -0.5],
     };
-    let vertex2 = MyVertex {
+    let vertex2 = Position {
         position: [0.0, 0.5],
     };
-    let vertex3 = MyVertex {
+    let vertex3 = Position {
         position: [0.5, -0.25],
     };
     let vertex_buffer = Buffer::from_iter(
@@ -332,8 +296,8 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::load(device.clone()).expect("failed to create shader module");
-    let fs = fs::load(device.clone()).expect("failed to create shader module");
+    let vs = triton::shaders::vs::load(device.clone()).expect("failed to create shader module");
+    let fs = triton::shaders::fs::load(device.clone()).expect("failed to create shader module");
 
     let mut viewport = Viewport {
         offset: [0.0, 0.0],
