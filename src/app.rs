@@ -41,9 +41,11 @@ impl Default for App {
     fn default() -> Self {
         let config = VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
+                #[cfg(target_os = "macos")]
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 max_api_version: Some(Version::V1_2),
                 enabled_extensions: InstanceExtensions {
+                    #[cfg(target_os = "macos")]
                     khr_portability_enumeration: true,
                     ..Default::default()
                 },
@@ -51,6 +53,7 @@ impl Default for App {
             },
             device_extensions: DeviceExtensions {
                 khr_dynamic_rendering: true,
+                #[cfg(target_os = "macos")]
                 khr_portability_subset: true,
                 khr_swapchain: true,
                 ..Default::default()
