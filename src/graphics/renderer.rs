@@ -2,19 +2,65 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, CommandBufferExecFuture,
+        PrimaryAutoCommandBuffer,
+    },
+    device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::StandardMemoryAllocator,
     pipeline::graphics::viewport::Viewport,
-    swapchain::{Surface, Swapchain, SwapchainCreateInfo},
+    render_pass::RenderPass,
+    shader::ShaderModule,
+    swapchain::{
+        self, PresentFuture, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo,
+        SwapchainPresentInfo,
+    },
+    sync::{
+        self,
+        future::{FenceSignalFuture, JoinFuture},
+        GpuFuture,
+    },
+    Validated, VulkanError,
 };
-use winit::window::Window;
+use winit::{dpi::PhysicalSize, window::Window};
 
-use super::{helpers, mesh::MeshBuilder, shaders};
+use super::{
+    helpers,
+    mesh::{BasicMesh, MeshBuilder},
+    shaders,
+};
 
-pub struct Renderer {}
+pub struct Renderer {
+    device: Arc<Device>,
+    swapchain: Arc<Swapchain>,
+    render_pass: Arc<RenderPass>,
+    viewport: Viewport,
+    vs: Arc<ShaderModule>,
+    fs: Arc<ShaderModule>,
+    command_buffer_allocator: StandardCommandBufferAllocator,
+    command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
+    queue: Arc<Queue>,
+    mesh: BasicMesh,
+    window_resized: bool,
+    dimensions: PhysicalSize<u32>,
+    need_swapchain_recreation: bool,
+    fences: Vec<
+        Option<
+            Arc<
+                FenceSignalFuture<
+                    PresentFuture<
+                        CommandBufferExecFuture<
+                            JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>,
+                        >,
+                    >,
+                >,
+            >,
+        >,
+    >,
+    previous_fence_i: u32,
+}
 
 impl Renderer {
     pub fn new(extensions: InstanceExtensions, window: Arc<Window>) -> anyhow::Result<Self> {
@@ -58,7 +104,7 @@ impl Renderer {
 
         let queue = queues.next().context("getting a queue")?;
 
-        let (mut swapchain, images) = {
+        let (swapchain, images) = {
             let caps = physical_device
                 .surface_capabilities(&surface, Default::default())
                 .context("getting surface capabilities")?;
@@ -110,7 +156,7 @@ impl Renderer {
         let vs = shaders::vs::load(device.clone()).expect("failed to create shader module");
         let fs = shaders::fs::load(device.clone()).expect("failed to create shader module");
 
-        let mut viewport = Viewport {
+        let viewport = Viewport {
             offset: [0.0, 0.0],
             extent: window.inner_size().into(),
             depth_range: 0.0..=1.0,
@@ -127,14 +173,138 @@ impl Renderer {
         let command_buffer_allocator =
             StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-        let mut command_buffers = helpers::get_command_buffers(
+        let command_buffers = helpers::get_command_buffers(
             &command_buffer_allocator,
             &queue,
             &pipeline,
             &framebuffers,
             &mesh.vertex_buffer,
-        );
+        )?;
 
-        Ok(Renderer {})
+        let frames_in_flight = images.len();
+
+        Ok(Renderer {
+            device,
+            swapchain,
+            render_pass,
+            viewport,
+            vs,
+            fs,
+            command_buffer_allocator,
+            command_buffers,
+            queue,
+            mesh,
+            window_resized: true,
+            dimensions: window.inner_size(),
+            need_swapchain_recreation: true,
+            fences: vec![None; frames_in_flight],
+            previous_fence_i: 0,
+        })
+    }
+
+    pub fn window_resized(&mut self, new_size: PhysicalSize<u32>) {
+        self.window_resized = true;
+        self.dimensions = new_size;
+    }
+
+    pub fn draw(&mut self) -> anyhow::Result<()> {
+        if self.window_resized || self.need_swapchain_recreation {
+            self.need_swapchain_recreation = false;
+
+            let (new_swapchain, new_images) = self
+                .swapchain
+                .recreate(SwapchainCreateInfo {
+                    image_extent: self.dimensions.into(),
+                    ..self.swapchain.create_info()
+                })
+                .context("failed to recreate swapchain")?;
+
+            self.swapchain = new_swapchain;
+
+            let new_framebuffers = helpers::get_framebuffers(&new_images, self.render_pass.clone())
+                .context("recreating framebuffers")?;
+
+            if self.window_resized {
+                self.viewport.extent = self.dimensions.into();
+
+                let new_pipeline = helpers::get_pipeline(
+                    self.device.clone(),
+                    self.vs.clone(),
+                    self.fs.clone(),
+                    self.render_pass.clone(),
+                    self.viewport.clone(),
+                )
+                .unwrap();
+
+                self.command_buffers = helpers::get_command_buffers(
+                    &self.command_buffer_allocator,
+                    &self.queue,
+                    &new_pipeline,
+                    &new_framebuffers,
+                    &self.mesh.vertex_buffer,
+                )?;
+            }
+        }
+
+        let (image_i, suboptimal, acquire_future) =
+            match swapchain::acquire_next_image(self.swapchain.clone(), None)
+                .map_err(Validated::unwrap)
+            {
+                Ok(r) => r,
+                Err(VulkanError::OutOfDate) => {
+                    self.need_swapchain_recreation = true;
+                    return Ok(());
+                }
+                Err(e) => panic!("failed to acquire next image: {e}"),
+            };
+
+        if suboptimal {
+            self.need_swapchain_recreation = true;
+        }
+
+        // wait for the fence related to this image to finish (normally this would be the oldest fence)
+        if let Some(image_fence) = &self.fences[image_i as usize] {
+            image_fence.wait(None).unwrap();
+        }
+
+        let previous_future = match self.fences[self.previous_fence_i as usize].clone() {
+            // Create a NowFuture
+            None => {
+                let mut now = sync::now(self.device.clone());
+                now.cleanup_finished();
+
+                now.boxed()
+            }
+            // Use the existing FenceSignalFuture
+            Some(fence) => fence.boxed(),
+        };
+
+        let future = previous_future
+            .join(acquire_future)
+            .then_execute(
+                self.queue.clone(),
+                self.command_buffers[image_i as usize].clone(),
+            )
+            .unwrap()
+            .then_swapchain_present(
+                self.queue.clone(),
+                SwapchainPresentInfo::swapchain_image_index(self.swapchain.clone(), image_i),
+            )
+            .then_signal_fence_and_flush();
+
+        self.fences[image_i as usize] = match future.map_err(Validated::unwrap) {
+            Ok(value) => Some(Arc::new(value)),
+            Err(VulkanError::OutOfDate) => {
+                self.need_swapchain_recreation = true;
+                None
+            }
+            Err(e) => {
+                println!("failed to flush future: {e}");
+                None
+            }
+        };
+
+        self.previous_fence_i = image_i;
+        Ok(())
     }
 }

@@ -101,7 +101,6 @@ pub fn get_framebuffers(
             )
             .context("Creating Framebuffer")
         })
-        .into_iter()
         .collect()
 }
 
