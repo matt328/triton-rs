@@ -1,35 +1,30 @@
-use std::sync::Arc;
-
 use vulkano::{
-    buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, shader::ShaderModule,
+    buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, shader::EntryPoint,
 };
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
-pub struct Vertex2 {
+pub struct Position {
     #[format(R32G32B32_SFLOAT)]
     position: [f32; 3],
 }
 
-#[repr(C)]
 #[derive(BufferContents, Vertex)]
-struct Vertex3 {
+#[repr(C)]
+pub struct Normal {
     #[format(R32G32B32_SFLOAT)]
     normal: [f32; 3],
 }
 
 pub struct Effect {
-    pub vertex: Arc<ShaderModule>,
-    pub tess_control: Option<Arc<ShaderModule>>,
-    pub tess_evaluation: Option<Arc<ShaderModule>>,
-    pub fragment: Arc<ShaderModule>,
+    pub vertex: EntryPoint,
+    pub tess_control: Option<EntryPoint>,
+    pub tess_evaluation: Option<EntryPoint>,
+    pub fragment: EntryPoint,
 }
 
 impl Effect {
-    pub fn builder(
-        vertex_shader: Arc<ShaderModule>,
-        fragment_shader: Arc<ShaderModule>,
-    ) -> EffectBuilder {
+    pub fn builder(vertex_shader: EntryPoint, fragment_shader: EntryPoint) -> EffectBuilder {
         EffectBuilder::new(vertex_shader, fragment_shader)
     }
 
@@ -39,17 +34,14 @@ impl Effect {
 }
 
 pub struct EffectBuilder {
-    vertex: Arc<ShaderModule>,
-    tess_control: Option<Arc<ShaderModule>>,
-    tess_evaluation: Option<Arc<ShaderModule>>,
-    fragment: Arc<ShaderModule>,
+    vertex: EntryPoint,
+    tess_control: Option<EntryPoint>,
+    tess_evaluation: Option<EntryPoint>,
+    fragment: EntryPoint,
 }
 
 impl EffectBuilder {
-    pub fn new(
-        vertex_shader: Arc<ShaderModule>,
-        fragment_shader: Arc<ShaderModule>,
-    ) -> EffectBuilder {
+    pub fn new(vertex_shader: EntryPoint, fragment_shader: EntryPoint) -> EffectBuilder {
         EffectBuilder {
             vertex: vertex_shader,
             fragment: fragment_shader,
@@ -58,12 +50,12 @@ impl EffectBuilder {
         }
     }
 
-    pub fn tesselation_control_shader(mut self, shader: Arc<ShaderModule>) -> EffectBuilder {
+    pub fn tesselation_control_shader(mut self, shader: EntryPoint) -> EffectBuilder {
         self.tess_control = Some(shader);
         self
     }
 
-    pub fn tesselation_evaluation_shader(mut self, shader: Arc<ShaderModule>) -> EffectBuilder {
+    pub fn tesselation_evaluation_shader(mut self, shader: EntryPoint) -> EffectBuilder {
         self.tess_evaluation = Some(shader);
         self
     }

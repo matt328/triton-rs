@@ -10,6 +10,8 @@ use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
 };
+use vulkano::{sync::GpuFuture, command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents}, pipeline::PipelineBindPoint};
+use crate::framework::graphics::GraphicsContext;
 
 pub struct Application {}
 
@@ -33,6 +35,9 @@ impl Application {
         let mut vulkano_windows = VulkanoWindows::default();
         let _id1 =
             vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+
+        let graphics_context =
+            GraphicsContext::new(&context, &vulkano_windows.get_primary_renderer().unwrap())?;
 
         let mut previous_instant = Instant::now();
         let max_frame_time: f64 = 0.1;
@@ -58,12 +63,55 @@ impl Application {
                     accumulated_time += elapsed;
 
                     while accumulated_time >= fixed_time_step {
-                        Application::update();
+                        Self::update();
                         accumulated_time -= fixed_time_step;
                     }
 
                     let blending_factor = accumulated_time / fixed_time_step;
-                    Application::render(blending_factor);
+                    let renderer = vulkano_windows.get_primary_renderer_mut().unwrap();
+
+                    let future = renderer.acquire().unwrap();
+
+                    let mut builder = AutoCommandBufferBuilder::primary(
+                        &command_buffer_allocator,
+                        queue.queue_family_index(),
+                        CommandBufferUsage::OneTimeSubmit,
+                    )
+                    .unwrap();
+                    builder
+                        .begin_render_pass(
+                            RenderPassBeginInfo {
+                                clear_values: vec![
+                                    Some([0.0, 0.0, 1.0, 1.0].into()),
+                                    Some(1f32.into()),
+                                ],
+                                ..RenderPassBeginInfo::framebuffer(
+                                    framebuffers[image_index as usize].clone(),
+                                )
+                            },
+                            SubpassContents::Inline,
+                        )
+                        .unwrap()
+                        .bind_pipeline_graphics(pipeline.clone())
+                        .bind_descriptor_sets(
+                            PipelineBindPoint::Graphics,
+                            pipeline.layout().clone(),
+                            0,
+                            set,
+                        )
+                        .bind_vertex_buffers(0, (vertex_buffer.clone(), normals_buffer.clone()))
+                        .bind_index_buffer(index_buffer.clone())
+                        .draw_indexed(index_buffer.len() as u32, 1, 0, 0, 0)
+                        .unwrap()
+                        .end_render_pass()
+                        .unwrap();
+                    let command_buffer = builder.build().unwrap();
+
+                    future.then_execute(renderer.graphics_queue(), command_buffer);
+
+                    Self::render(blending_factor, &graphics_context);
+
+                    renderer.present(future, false);
 
                     previous_instant = current_instant;
                 }
@@ -82,7 +130,10 @@ impl Application {
         info!("update");
     }
 
-    fn render(blending_factor: f64) {
+    fn render(blending_factor: f64, graphics_context: &GraphicsContext) {
+
+        
+
         info!("render: {}", blending_factor);
     }
 }

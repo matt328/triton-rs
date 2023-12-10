@@ -1,2 +1,2 @@
 [workspace]
-members = ["triton", "driver"]
+members = ["triton", "driver", "vulkano/examples", "vulkano/vulkano"]

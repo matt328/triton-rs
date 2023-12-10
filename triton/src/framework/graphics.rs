@@ -1,26 +1,29 @@
 use anyhow::{Context, Result};
+use vulkano::render_pass::FramebufferCreateInfo;
+use std::sync::Arc;
+use vulkano::image::view::ImageView;
+use vulkano::image::Image;
 use vulkano::image::ImageCreateInfo;
 use vulkano::image::ImageType;
 use vulkano::image::ImageUsage;
 use vulkano::memory::allocator::AllocationCreateInfo;
-use std::sync::Arc;
-use vulkano::image::view::ImageView;
-use vulkano::image::Image;
 use vulkano::pipeline::graphics::color_blend::ColorBlendState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
+use vulkano::pipeline::graphics::vertex_input::VertexDefinition;
 use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 use vulkano::pipeline::PipelineLayout;
 use vulkano::pipeline::PipelineShaderStageCreateInfo;
 use vulkano::Validated;
 use vulkano::VulkanError;
+use vulkano::device::DeviceOwned;
 
 use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
+use vulkano::pipeline::graphics::vertex_input::Vertex;
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::graphics::viewport::ViewportState;
-use vulkano::render_pass::FramebufferCreateInfo;
 use vulkano::render_pass::Subpass;
 use vulkano_util::context::VulkanoContext;
 
@@ -29,14 +32,17 @@ use vulkano_util::renderer::VulkanoWindowRenderer;
 use vulkano::format::Format;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass};
-use vulkano::{
-    device::{Device, DeviceOwned},
-    memory::allocator::StandardMemoryAllocator,
-};
+use vulkano::{device::Device, memory::allocator::StandardMemoryAllocator};
 
 use crate::framework::shaders::{fs, vs, Effect};
 
-pub struct GraphicsContext {}
+use super::shaders::Normal;
+use super::shaders::Position;
+
+pub struct GraphicsContext {
+    pipeline: Arc<GraphicsPipeline>,
+    framebuffers: Vec<Arc<Framebuffer>>
+}
 
 impl GraphicsContext {
     pub fn new(
@@ -80,17 +86,21 @@ impl GraphicsContext {
         let (pipeline, framebuffers) = GraphicsContext::window_size_dependent_setup(
             &context.memory_allocator(),
             &default_effect,
-            images,
+            renderer.swapchain_image_views(),
             render_pass,
         );
 
-        Ok(GraphicsContext {})
+        Ok(GraphicsContext {
+            pipeline: pipeline.unwrap(),
+            framebuffers: framebuffers.unwrap()
+        })
     }
+
     /// (Re)creates the pipeline and Framebuffers
     fn window_size_dependent_setup(
         memory_allocator: &StandardMemoryAllocator,
         default_effect: &Effect,
-        images: &[Arc<Image>],
+        images: &[Arc<ImageView>],
         render_pass: Arc<RenderPass>,
     ) -> (
         anyhow::Result<Arc<GraphicsPipeline>>,
@@ -102,24 +112,24 @@ impl GraphicsContext {
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::D16_UNORM,
-                    extent: images[0].extent(),
+                    extent: images[0].image().extent(),
                     usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
-            ).unwrap()
+            )
+            .unwrap(),
         )
         .unwrap();
 
         // Create a Framebuffer for each image
-        let framebuffers: Result<Vec<Arc<Framebuffer>>, Validated<VulkanError> = images
+        let framebuffers = images
             .iter()
             .map(|image| {
-                let view = ImageView::new_default(image.clone()).unwrap();
                 Framebuffer::new(
                     render_pass.clone(),
                     FramebufferCreateInfo {
-                        attachments: vec![view, depth_buffer.clone()],
+                        attachments: vec![image.clone(), depth_buffer.clone()],
                         ..Default::default()
                     },
                 )
@@ -129,7 +139,7 @@ impl GraphicsContext {
         let default_pipeline = GraphicsContext::create_pipeline(
             memory_allocator.device(),
             default_effect,
-            dimensions,
+            images[0].image().extent(),
             render_pass.clone(),
         )
         .context("Create Default Pipeline");
@@ -140,23 +150,16 @@ impl GraphicsContext {
     fn create_pipeline(
         device: &Arc<Device>,
         effect: &Effect,
-        dimensions: [u32; 2],
+        dimensions: [u32; 3],
         render_pass: Arc<RenderPass>,
     ) -> Result<Arc<GraphicsPipeline>, Validated<VulkanError>> {
         let pipeline = {
             let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
-                .definition(
-                    &effect
-                        .vertex
-                        .entry_point("main")
-                        .unwrap()
-                        .info()
-                        .input_interface,
-                )
+                .definition(&effect.vertex.info().input_interface)
                 .unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(effect.vertex.clone()),
+                PipelineShaderStageCreateInfo::new(effect.fragment.clone()),
             ];
             let layout = PipelineLayout::new(
                 device.clone(),
