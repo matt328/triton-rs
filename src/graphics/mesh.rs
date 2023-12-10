@@ -6,7 +6,7 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
 };
 
-use crate::shaders::Position;
+use super::shaders::Position;
 
 #[derive(Default)]
 pub struct MeshBuilder {
@@ -19,7 +19,7 @@ impl MeshBuilder {
         self
     }
 
-    pub fn build(self, memory_allocator: Arc<dyn MemoryAllocator>) -> anyhow::Result<Mesh> {
+    pub fn build(self, memory_allocator: Arc<dyn MemoryAllocator>) -> anyhow::Result<BasicMesh> {
         let vertices = self.vertices.unwrap_or_default();
 
         let vertex_buffer = Buffer::from_iter(
@@ -37,10 +37,10 @@ impl MeshBuilder {
         )
         .context("creating vertex buffer")?;
 
-        Ok(Mesh { vertex_buffer })
+        Ok(BasicMesh { vertex_buffer })
     }
 }
 
-pub struct Mesh {
+pub struct BasicMesh {
     pub vertex_buffer: Subbuffer<[Position]>,
 }
