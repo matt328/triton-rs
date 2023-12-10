@@ -1,11 +1,8 @@
-//! This is the source code of the "Windowing" chapter at http://vulkano.rs.
-//!
-//! It is not commented, as the explanations can be found in the book itself.
-
 use std::sync::Arc;
 
+use anyhow::Context;
 use triton::shaders::Position;
-use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer};
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
@@ -42,7 +39,7 @@ pub fn select_physical_device(
     instance: &Arc<Instance>,
     surface: &Arc<Surface>,
     device_extensions: &DeviceExtensions,
-) -> (Arc<PhysicalDevice>, u32) {
+) -> anyhow::Result<(Arc<PhysicalDevice>, u32)> {
     instance
         .enumerate_physical_devices()
         .expect("failed to enumerate physical devices")
@@ -64,10 +61,13 @@ pub fn select_physical_device(
             PhysicalDeviceType::Cpu => 3,
             _ => 4,
         })
-        .expect("no device available")
+        .context("Selecting Physical Device")
 }
 
-fn get_render_pass(device: Arc<Device>, swapchain: Arc<Swapchain>) -> Arc<RenderPass> {
+fn get_render_pass(
+    device: Arc<Device>,
+    swapchain: Arc<Swapchain>,
+) -> anyhow::Result<Arc<RenderPass>> {
     vulkano::single_pass_renderpass!(
         device,
         attachments: {
@@ -83,10 +83,13 @@ fn get_render_pass(device: Arc<Device>, swapchain: Arc<Swapchain>) -> Arc<Render
             depth_stencil: {},
         },
     )
-    .unwrap()
+    .context("Creating RenderPass")
 }
 
-fn get_framebuffers(images: &[Arc<Image>], render_pass: Arc<RenderPass>) -> Vec<Arc<Framebuffer>> {
+fn get_framebuffers(
+    images: &[Arc<Image>],
+    render_pass: Arc<RenderPass>,
+) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
     images
         .iter()
         .map(|image| {
@@ -98,9 +101,10 @@ fn get_framebuffers(images: &[Arc<Image>], render_pass: Arc<RenderPass>) -> Vec<
                     ..Default::default()
                 },
             )
-            .unwrap()
+            .context("Creating Framebuffer")
         })
-        .collect::<Vec<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn get_pipeline(
@@ -109,7 +113,7 @@ fn get_pipeline(
     fs: Arc<ShaderModule>,
     render_pass: Arc<RenderPass>,
     viewport: Viewport,
-) -> Arc<GraphicsPipeline> {
+) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let vs = vs.entry_point("main").unwrap();
     let fs = fs.entry_point("main").unwrap();
 
@@ -153,7 +157,7 @@ fn get_pipeline(
             ..GraphicsPipelineCreateInfo::layout(layout)
         },
     )
-    .unwrap()
+    .context("Creating Pipeline")
 }
 
 fn get_command_buffers(
@@ -199,7 +203,7 @@ fn get_command_buffers(
         .collect()
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
     let event_loop = EventLoop::new().unwrap();
 
@@ -223,7 +227,7 @@ fn main() {
     };
 
     let (physical_device, queue_family_index) =
-        select_physical_device(&instance, &surface, &device_extensions);
+        select_physical_device(&instance, &surface, &device_extensions)?;
 
     let (device, mut queues) = Device::new(
         physical_device.clone(),
@@ -263,12 +267,11 @@ fn main() {
                 composite_alpha,
                 ..Default::default()
             },
-        )
-        .unwrap()
+        )?
     };
 
-    let render_pass = get_render_pass(device.clone(), swapchain.clone());
-    let framebuffers = get_framebuffers(&images, render_pass.clone());
+    let render_pass = get_render_pass(device.clone(), swapchain.clone())?;
+    let framebuffers = get_framebuffers(&images, render_pass.clone())?;
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
@@ -311,7 +314,7 @@ fn main() {
         fs.clone(),
         render_pass.clone(),
         viewport.clone(),
-    );
+    )?;
 
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
@@ -364,19 +367,21 @@ fn main() {
                             .expect("failed to recreate swapchain");
 
                         swapchain = new_swapchain;
-                        let new_framebuffers = get_framebuffers(&new_images, render_pass.clone());
+                        let new_framebuffers = get_framebuffers(&new_images, render_pass.clone())?;
 
                         if window_resized {
                             window_resized = false;
 
                             viewport.extent = new_dimensions.into();
+
                             let new_pipeline = get_pipeline(
                                 device.clone(),
                                 vs.clone(),
                                 fs.clone(),
                                 render_pass.clone(),
                                 viewport.clone(),
-                            );
+                            )?;
+
                             command_buffers = get_command_buffers(
                                 &command_buffer_allocator,
                                 &queue,
@@ -447,5 +452,5 @@ fn main() {
                 _ => (),
             }
         })
-        .unwrap();
+        .context("Processing EventLoop")
 }
