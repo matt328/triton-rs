@@ -1,4 +1,5 @@
 use anyhow::{Context, Error, Result};
+use vulkano_util::context::VulkanoContext;
 use std::sync::Arc;
 use vulkano::image::view::ImageView;
 use vulkano::image::AttachmentImage;
@@ -11,82 +12,36 @@ use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::graphics::viewport::ViewportState;
 use vulkano::render_pass::FramebufferCreateInfo;
 use vulkano::render_pass::Subpass;
-use vulkano_util::context::VulkanoContext;
+
+use vulkano_util::renderer::VulkanoWindowRenderer;
 
 use vulkano::format::Format;
 use vulkano::image::ImageAccess;
 use vulkano::image::SwapchainImage;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferCreationError, RenderPass};
-use vulkano::sync::GpuFuture;
 use vulkano::{
-    device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
-    image::ImageUsage,
+    device::{Device, DeviceOwned},
     memory::allocator::StandardMemoryAllocator,
-    swapchain::{Surface, Swapchain, SwapchainCreateInfo},
-    sync,
 };
-use winit::window::Window;
 
 use crate::framework::shaders::{fs, vs, Effect};
 
 use super::shaders::Vertex2;
 
-pub struct GraphicsContext {
-    physical_device: Arc<PhysicalDevice>,
-    queue_family_index: u32,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
-    memory_allocator: StandardMemoryAllocator,
-}
+pub struct GraphicsContext {}
 
 impl GraphicsContext {
-    pub fn new(context: &VulkanoContext, surface: Arc<Surface>) -> anyhow::Result<GraphicsContext> {
-        let (mut swapchain, images) = {
-            let surface_capabilities = context
-                .device()
-                .physical_device()
-                .surface_capabilities(&surface, Default::default())
-                .unwrap();
-            let image_format = Some(
-                context
-                    .device()
-                    .physical_device()
-                    .surface_formats(&surface, Default::default())
-                    .unwrap()[0]
-                    .0,
-            );
-
-            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
-            Swapchain::new(
-                context.device().clone(),
-                surface.clone(),
-                SwapchainCreateInfo {
-                    min_image_count: surface_capabilities.min_image_count,
-                    image_format,
-                    image_extent: window.inner_size().into(),
-                    image_usage: ImageUsage::COLOR_ATTACHMENT,
-                    composite_alpha: surface_capabilities
-                        .supported_composite_alpha
-                        .into_iter()
-                        .next()
-                        .unwrap(),
-                    ..Default::default()
-                },
-            )
-            .context("Creating Swapchain")?
-        };
-
-        let memory_allocator = StandardMemoryAllocator::new_default(context.device().clone());
-
-        let frame_future = Some(sync::now(context.device().clone()).boxed());
-
+    pub fn new(
+        context: &VulkanoContext,
+        renderer: &VulkanoWindowRenderer,
+    ) -> anyhow::Result<GraphicsContext> {
         let render_pass = vulkano::single_pass_renderpass!(context.device().clone(),
             attachments: {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: swapchain.image_format(),
+                    format: renderer.swapchain_format(),
                     samples: 1,
                 },
                 depth: {
@@ -108,22 +63,18 @@ impl GraphicsContext {
 
         let default_effect = Effect::builder(vs, fs).build();
 
+        
+
         let (pipeline, framebuffers) = GraphicsContext::window_size_dependent_setup(
-            &memory_allocator,
+            &context.memory_allocator(),
             &default_effect,
-            images.as_slice(),
+            images,
             render_pass,
         );
 
-        Ok(GraphicsContext {
-            physical_device,
-            queue_family_index,
-            device,
-            queue,
-            memory_allocator,
-        })
+        Ok(GraphicsContext {})
     }
-
+    /// (Re)creates the pipeline and Framebuffers
     fn window_size_dependent_setup(
         memory_allocator: &StandardMemoryAllocator,
         default_effect: &Effect,
