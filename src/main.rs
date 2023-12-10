@@ -4,10 +4,10 @@ use anyhow::Context;
 use log::error;
 use triton::{
     app::App,
-    shaders::{fs, vs, Position, create_pipeline},
+    shaders::{create_pipeline, Position},
 };
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderingAttachmentInfo, RenderingInfo,
@@ -15,20 +15,7 @@ use vulkano::{
     device::Queue,
     image::view::ImageView,
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            subpass::PipelineRenderingCreateInfo,
-            vertex_input::{Vertex as V1, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-    },
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
     render_pass::{AttachmentLoadOp, AttachmentStoreOp},
     sync::GpuFuture,
 };
@@ -178,7 +165,7 @@ fn render_game(
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: &Subbuffer<[Position]>,
 ) -> Box<dyn GpuFuture> {
-    let state = previous_state + (blend_factor * (next_state - previous_state));
+    let _state = previous_state + (blend_factor * (next_state - previous_state));
 
     let mut builder = AutoCommandBufferBuilder::primary(
         command_buffer_allocator,

@@ -17,7 +17,6 @@ use vulkano::{
         layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
-    swapchain::Swapchain,
 };
 use vulkano_util::renderer::VulkanoWindowRenderer;
 
