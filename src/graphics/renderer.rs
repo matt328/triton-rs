@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
+use cgmath::{perspective, Deg, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use log::info;
 
 #[cfg(target_os = "macos")]
@@ -36,7 +36,10 @@ use vulkano::{
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::graphics::shaders::{CUBE_INDICES, CUBE_VERTICES};
+use crate::{
+    game::State,
+    graphics::shaders::{CUBE_INDICES, CUBE_VERTICES},
+};
 
 use super::{
     helpers,
@@ -264,7 +267,7 @@ impl Renderer {
         self.dimensions = new_size;
     }
 
-    pub fn draw(&mut self) -> anyhow::Result<()> {
+    pub fn draw(&mut self, state: State) -> anyhow::Result<()> {
         if self.window_resized || self.need_swapchain_recreation {
             self.need_swapchain_recreation = false;
 
@@ -359,7 +362,9 @@ impl Renderer {
         that can just be
         set once per frame and referenced in the shader via gl_InstanceId i think?
         */
-        let model: Matrix4<f32> = Matrix4::identity();
+        let axis = Vector3::new(0.0, 1.0, 0.0);
+        let angle = Deg(state.triangle_rotation);
+        let model: Matrix4<f32> = Matrix4::from_axis_angle(axis, angle);
 
         // Update Per Frame buffers here
         *self.uniform_buffers[image_i as usize].write().unwrap() =

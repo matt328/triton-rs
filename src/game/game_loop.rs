@@ -14,17 +14,17 @@ use super::state::{next_state, State};
 
 pub struct GameLoop {
     previous_instant: Instant,
-    accumulated_time: f64,
+    accumulated_time: f32,
     renderer: Renderer,
     state: State,
 }
 
-const FPS: f64 = 60.0;
+const FPS: f32 = 60.0;
 // Note to self: Updates per second is number of times update is called per second
 // at 60 frames, this works out to a 4 updates each frame, time permitting
-const UPS: f64 = 240.0;
-const MAX_FRAME_TIME: f64 = 1.0 / FPS;
-const FIXED_TIME_STEP: f64 = 1.0 / UPS;
+const UPS: f32 = 240.0;
+const MAX_FRAME_TIME: f32 = 1.0 / FPS;
+const FIXED_TIME_STEP: f32 = 1.0 / UPS;
 
 impl GameLoop {
     pub fn new(
@@ -55,7 +55,7 @@ impl GameLoop {
 
         let mut elapsed = current_instant
             .duration_since(self.previous_instant)
-            .as_secs_f64();
+            .as_secs_f32();
 
         event!(Level::INFO, elapsed);
 
@@ -68,8 +68,10 @@ impl GameLoop {
 
         let update_loop = span!(Level::INFO, "update loop").entered();
 
-        let previous_state = self.state;
+        let mut previous_state = self.state;
+
         while self.accumulated_time >= FIXED_TIME_STEP {
+            previous_state = self.state;
             self.state = next_state(&self.state);
             self.accumulated_time -= FIXED_TIME_STEP;
         }
@@ -77,6 +79,8 @@ impl GameLoop {
         update_loop.exit();
 
         let blending_factor = self.accumulated_time / FIXED_TIME_STEP;
+
+        event!(Level::INFO, blending_factor);
 
         self.state = blend_state(&previous_state, &self.state, blending_factor);
 
@@ -94,6 +98,6 @@ impl GameLoop {
         let _span = span!(Level::INFO, "render_game").entered();
         let f = format!("{:?}", self.state);
         event!(Level::INFO, f);
-        self.renderer.draw()
+        self.renderer.draw(self.state)
     }
 }
