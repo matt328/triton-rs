@@ -18,3 +18,7 @@ vulkano-win = { path = "./vulkano/vulkano-win" }
 vulkano-util = { path = "./vulkano/vulkano-util" }
 examples = { path = "./vulkano/examples"}
 winit = "0.28.3"
+
+[features]
+default = ["tracing"]
+tracing = []

@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use anyhow::Context;
 
+use log::info;
 use tracing::{event, span, Level};
 use tracing_tracy::client::frame_mark;
 use tracy_client::ProfiledAllocator;
@@ -21,18 +22,23 @@ pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
 
 fn main() -> anyhow::Result<()> {
+    log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
+
+    #[cfg(feature = "tracing")]
+    info!("Tracing enabled");
+
+    #[cfg(feature = "tracing")]
     #[global_allocator]
     static GLOBAL: ProfiledAllocator<std::alloc::System> =
         ProfiledAllocator::new(std::alloc::System, 100);
 
+    #[cfg(feature = "tracing")]
     tracing::subscriber::set_global_default(
         tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
     )
     .expect("set up the subscriber");
 
     let _root = span!(Level::INFO, "root").entered();
-
-    log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
 
     let event_loop = EventLoop::new();
 
@@ -112,6 +118,7 @@ fn main() -> anyhow::Result<()> {
 
                 let _rendered = vulkan_app.render_game(current_state, &vertex_buffer);
 
+                #[cfg(feature = "tracing")]
                 frame_mark();
                 previous_instant = current_instant;
             }

@@ -15,7 +15,6 @@ use vulkano::{
     instance::{InstanceCreateInfo, InstanceExtensions},
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
     render_pass::{AttachmentLoadOp, AttachmentStoreOp},
-    swapchain::PresentMode,
     Version,
 };
 use vulkano_util::{
