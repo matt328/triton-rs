@@ -2,6 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use log::info;
+
+#[cfg(target_os = "macos")]
+use vulkano::instance::InstanceCreateFlags;
+
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferExecFuture,
@@ -9,7 +13,7 @@ use vulkano::{
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
+    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::StandardMemoryAllocator,
     pipeline::graphics::viewport::Viewport,
     render_pass::RenderPass,
