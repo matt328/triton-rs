@@ -116,7 +116,7 @@ impl App {
 
     pub fn render_game(
         &mut self,
-        state: f64,
+        _state: f64,
         vertex_buffer: &Subbuffer<[Position]>,
     ) -> anyhow::Result<()> {
         let _span = span!(Level::INFO, "render_game").entered();

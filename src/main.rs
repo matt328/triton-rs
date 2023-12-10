@@ -74,7 +74,6 @@ fn main() -> anyhow::Result<()> {
     let max_frame_time: f64 = 0.166666;
     let mut accumulated_time: f64 = 0.0;
     let fixed_time_step: f64 = 1.0 / 240.0;
-    let mut current_instant = Instant::now();
 
     let mut object_rotation = 0.0;
     let mut prev_object_rotation = 0.0;
@@ -88,7 +87,7 @@ fn main() -> anyhow::Result<()> {
             } => *control_flow = ControlFlow::Exit,
             Event::RedrawRequested(_) => {
                 let _redraw = span!(Level::INFO, "redraw_requested", accumulated_time).entered();
-                current_instant = Instant::now();
+                let current_instant = Instant::now();
 
                 let mut elapsed = current_instant
                     .duration_since(previous_instant)
