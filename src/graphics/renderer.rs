@@ -1,10 +1,7 @@
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 
 use anyhow::Context;
-use cgmath::{perspective, Deg, Matrix4, Point3, Rad, SquareMatrix, Vector3};
+use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
 use log::info;
 
 #[cfg(target_os = "macos")]
@@ -17,8 +14,7 @@ use vulkano::{
         PrimaryAutoCommandBuffer,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, PersistentDescriptorSet,
-        WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
@@ -64,6 +60,7 @@ pub struct Renderer {
     vs: Arc<ShaderModule>,
     fs: Arc<ShaderModule>,
 
+    memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     queue: Arc<Queue>,
@@ -155,9 +152,10 @@ impl Renderer {
 
         let render_pass = helpers::get_render_pass(device.clone(), swapchain.clone())?;
 
-        let framebuffers = helpers::get_framebuffers(&images, render_pass.clone())?;
-
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
+        let framebuffers =
+            helpers::get_framebuffers(&images, render_pass.clone(), memory_allocator.clone())?;
 
         let mesh = MeshBuilder::default()
             .with_vertices(CUBE_VERTICES.to_vec())
@@ -187,6 +185,8 @@ impl Renderer {
             device.clone(),
             Default::default(),
         ));
+
+        // TODO: figure out depth issues.
 
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
@@ -243,6 +243,7 @@ impl Renderer {
             viewport,
             vs,
             fs,
+            memory_allocator,
             command_buffer_allocator,
             command_buffers,
             queue,
@@ -277,8 +278,12 @@ impl Renderer {
 
             self.swapchain = new_swapchain;
 
-            let new_framebuffers = helpers::get_framebuffers(&new_images, self.render_pass.clone())
-                .context("recreating framebuffers")?;
+            let new_framebuffers = helpers::get_framebuffers(
+                &new_images,
+                self.render_pass.clone(),
+                self.memory_allocator.clone(),
+            )
+            .context("recreating framebuffers")?;
 
             if self.window_resized {
                 self.viewport.extent = self.dimensions.into();
@@ -341,7 +346,9 @@ impl Renderer {
         let near: f32 = 0.1;
         let far: f32 = 100.0;
         let projection = perspective(fov, aspect_ratio, near, far);
-        let eye = Point3::new(1.0, 2.0, 3.0);
+
+        let eye = Point3::new(3.0, 0.0, -4.0);
+
         let center = Point3::new(0.0, 0.0, 0.0);
         let up = Vector3::new(0.0, 1.0, 0.0);
         let view = Matrix4::look_at_rh(eye, center, up);

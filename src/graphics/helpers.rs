@@ -12,14 +12,17 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Queue, QueueFlags,
     },
-    image::{view::ImageView, Image},
+    format::Format,
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     instance::Instance,
+    memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
-            rasterization::RasterizationState,
+            rasterization::{FrontFace, RasterizationState},
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
@@ -32,7 +35,7 @@ use vulkano::{
     swapchain::{Surface, Swapchain},
 };
 
-use super::shaders::{Position, VertexPositionColor};
+use super::shaders::VertexPositionColor;
 
 pub fn select_physical_device(
     instance: &Arc<Instance>,
@@ -76,10 +79,16 @@ pub fn get_render_pass(
                 load_op: Clear,
                 store_op: Store,
             },
+            depth_stencil: {
+                format: Format::D16_UNORM,
+                samples: 1,
+                load_op: Clear,
+                store_op: DontCare,
+            },
         },
         pass: {
             color: [color],
-            depth_stencil: {},
+            depth_stencil: {depth_stencil},
         },
     )
     .context("Creating RenderPass")
@@ -88,15 +97,32 @@ pub fn get_render_pass(
 pub fn get_framebuffers(
     images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
     images
         .iter()
         .map(|image| {
+            let depth_buffer = ImageView::new_default(
+                Image::new(
+                    memory_allocator.clone(),
+                    ImageCreateInfo {
+                        image_type: ImageType::Dim2d,
+                        format: Format::D16_UNORM,
+                        extent: images[0].extent(),
+                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                            | ImageUsage::TRANSIENT_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let view = ImageView::new_default(image.clone()).unwrap();
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {
-                    attachments: vec![view],
+                    attachments: vec![view, depth_buffer.clone()],
                     ..Default::default()
                 },
             )
@@ -150,6 +176,10 @@ pub fn get_pipeline(
                 subpass.num_color_attachments(),
                 ColorBlendAttachmentState::default(),
             )),
+            depth_stencil_state: Some(DepthStencilState {
+                depth: Some(DepthState::simple()),
+                ..Default::default()
+            }),
             subpass: Some(subpass.into()),
             ..GraphicsPipelineCreateInfo::layout(layout)
         },
@@ -177,7 +207,7 @@ pub fn get_command_buffers(
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                    clear_values: vec![Some([0.392, 0.494, 0.929, 1.0].into()), Some(1f32.into())],
                     ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
                 },
                 SubpassBeginInfo {
