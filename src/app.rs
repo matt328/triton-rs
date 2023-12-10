@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use vulkano::{
     command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator,
+    descriptor_set::allocator::StandardDescriptorSetAllocator, device::Features,
 };
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
@@ -39,7 +39,14 @@ impl App {
 
 impl Default for App {
     fn default() -> Self {
-        let context = VulkanoContext::new(VulkanoConfig::default());
+        let config = VulkanoConfig {
+            device_features: Features {
+                dynamic_rendering: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let context = VulkanoContext::new(config);
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             context.device().clone(),
             Default::default(),
