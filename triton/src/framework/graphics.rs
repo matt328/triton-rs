@@ -1,8 +1,15 @@
 use anyhow::{Context, Error, Result};
-use vulkano_util::context::VulkanoContext;
 use std::sync::Arc;
 use vulkano::image::view::ImageView;
-use vulkano::image::AttachmentImage;
+use vulkano::pipeline::graphics::color_blend::ColorBlendState;
+use vulkano::pipeline::graphics::multisample::MultisampleState;
+use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
+use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
+use vulkano::pipeline::PipelineLayout;
+use vulkano::pipeline::PipelineShaderStageCreateInfo;
+use vulkano::Validated;
+use vulkano::VulkanError;
+
 use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::rasterization::PolygonMode;
@@ -12,14 +19,13 @@ use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::graphics::viewport::ViewportState;
 use vulkano::render_pass::FramebufferCreateInfo;
 use vulkano::render_pass::Subpass;
+use vulkano_util::context::VulkanoContext;
 
 use vulkano_util::renderer::VulkanoWindowRenderer;
 
 use vulkano::format::Format;
-use vulkano::image::ImageAccess;
-use vulkano::image::SwapchainImage;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, FramebufferCreationError, RenderPass};
+use vulkano::render_pass::{Framebuffer, RenderPass};
 use vulkano::{
     device::{Device, DeviceOwned},
     memory::allocator::StandardMemoryAllocator,
@@ -58,12 +64,16 @@ impl GraphicsContext {
         )
         .context("Creating render pass")?;
 
-        let vs = vs::load(context.device().clone()).context("Loading Vertex Shader")?;
-        let fs = fs::load(context.device().clone()).context("Loading Pixel Shader")?;
+        let vs = vs::load(context.device().clone())
+            .unwrap()
+            .entry_point("main")
+            .context("Loading Vertex Shader")?;
+        let fs = fs::load(context.device().clone())
+            .unwrap()
+            .entry_point("main")
+            .context("Loading Pixel Shader")?;
 
         let default_effect = Effect::builder(vs, fs).build();
-
-        
 
         let (pipeline, framebuffers) = GraphicsContext::window_size_dependent_setup(
             &context.memory_allocator(),
@@ -122,29 +132,55 @@ impl GraphicsContext {
         effect: &Effect,
         dimensions: [u32; 2],
         render_pass: Arc<RenderPass>,
-    ) -> Result<Arc<GraphicsPipeline>> {
-        let input_state = <Vertex2 as Vertex>::per_vertex();
-
-        let viewport_state = ViewportState::viewport_fixed_scissor_irrelevant([Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0..1.0,
-        }]);
-
-        let subpass = Subpass::from(render_pass, 0)
-            .ok_or(Error::msg("Failed to create subpass"))
+    ) -> Result<Arc<GraphicsPipeline>, Validated<VulkanError>> {
+        let pipeline = {
+            let device = memory_allocator.device();
+            let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
+                .definition(
+                    &effect
+                        .vertex
+                        .entry_point("main")
+                        .unwrap()
+                        .info()
+                        .input_interface,
+                )
+                .unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(fs),
+            ];
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
             .unwrap();
+            let subpass = Subpass::from(render_pass, 0).unwrap();
 
-        GraphicsPipeline::start()
-            .vertex_input_state(input_state)
-            .vertex_shader(effect.vertex.entry_point("main").unwrap(), ())
-            .fragment_shader(effect.fragment.entry_point("main").unwrap(), ())
-            .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(viewport_state)
-            .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
-            .depth_stencil_state(DepthStencilState::simple_depth_test())
-            .render_pass(subpass)
-            .build(device.clone())
-            .context("Failed to build default pipeline")
+            GraphicsPipeline::new(
+                device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(InputAssemblyState::default()),
+                    viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
+                        Viewport {
+                            offset: [0.0, 0.0],
+                            extent: [dimensions[0] as f32, dimensions[1] as f32],
+                            depth_range: 0.0..=1.0,
+                        },
+                    ])),
+                    rasterization_state: Some(RasterizationState::default()),
+                    depth_stencil_state: Some(DepthStencilState::simple_depth_test()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+        };
+        pipeline
     }
 }

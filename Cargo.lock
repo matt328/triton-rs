@@ -91,6 +91,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b13c32d80ecc7ab747b80c3784bce54ee8a7a0cc4fbda9bf4cda2cf6fe90854"
 
 [[package]]
+name = "approx"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f2a05fd1bd10b2527e20a2cd32d8873d115b8b39fe219ee25f42a8aca6ba278"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "approx"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab112f0a86d568ea0e627cc1d6be74a1e9cd55214684db5561995f6dad897c6"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "arc-swap"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -208,6 +226,16 @@ name = "cfg_aliases"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
+
+[[package]]
+name = "cgmath"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a98d30140e3296250832bbaaff83b27dcd6fa3cc70fb6f1f3e5c9c0023b5317"
+dependencies = [
+ "approx 0.4.0",
+ "num-traits",
+]
 
 [[package]]
 name = "chrono"
@@ -631,6 +659,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "matrixmultiply"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "090126dc04f95dc0d1c1c91f61bdd474b3930ca064c1edc8a849da2c6cbe1e77"
+dependencies = [
+ "autocfg",
+ "rawpointer",
+]
+
+[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -680,6 +718,33 @@ dependencies = [
  "log",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "nalgebra"
+version = "0.32.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "307ed9b18cc2423f29e83f84fd23a8e73628727990181f18641a8b5dc2ab1caa"
+dependencies = [
+ "approx 0.5.1",
+ "matrixmultiply",
+ "nalgebra-macros",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "simba",
+ "typenum",
+]
+
+[[package]]
+name = "nalgebra-macros"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91761aed67d03ad966ef783ae962ef9bbaca728d2dd7ceb7939ec110fffad998"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -744,6 +809,36 @@ checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
 dependencies = [
  "memchr",
  "minimal-lexical",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02e0d21255c828d6f128a1e41534206671e8c3ea0c62f32291e808dc82cff17d"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "225d3389fb3509a24c93f5c29eb6bde2586b98d9f016636dff58d7c6f7569cd9"
+dependencies = [
+ "autocfg",
+ "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0638a1c9d0a3c0914158145bc76cff373a75a627e6ecbfb71cbe6f453a5a19b0"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
 ]
 
 [[package]]
@@ -889,6 +984,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -946,6 +1047,12 @@ name = "raw-window-handle"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2ff9a1f06a88b01621b7ae906ef0211290d1c8a168a15542486a8f61c0833b9"
+
+[[package]]
+name = "rawpointer"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60a357793950651c4ed0f3f52338f53b2f809f32d83a07f72909fa13e4c6c1e3"
 
 [[package]]
 name = "redox_syscall"
@@ -1008,6 +1115,15 @@ name = "ryu"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ad4cc8da4ef723ed60bced201181d83791ad433213d8c24efffda1eec85d741"
+
+[[package]]
+name = "safe_arch"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f398075ce1e6a179b46f51bd88d0598b92b00d3551f1a2d4ac49e771b56ac354"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "scoped-tls"
@@ -1106,6 +1222,19 @@ dependencies = [
  "cmake",
  "libc",
  "roxmltree",
+]
+
+[[package]]
+name = "simba"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "061507c94fc6ab4ba1c9a0305018408e312e17c041eb63bef8aa726fa33aceae"
+dependencies = [
+ "approx 0.5.1",
+ "num-complex",
+ "num-traits",
+ "paste",
+ "wide",
 ]
 
 [[package]]
@@ -1300,6 +1429,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typenum"
+version = "1.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "497961ef93d974e23eb6f433eb5fe1b7930b659f06d12dec6fc44a8f554c0bba"
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1328,9 +1463,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "vk-parse"
-version = "0.8.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6a0bda9bbe6b9e50e6456c80aa8fe4cca3b21e4311a1130c41e4915ec2e32a"
+checksum = "81086c28be67a8759cd80cbb3c8f7b520e0874605fc5eb74d5a1c9c2d1878e79"
 dependencies = [
  "xml-rs",
 ]
@@ -1338,23 +1473,24 @@ dependencies = [
 [[package]]
 name = "vulkano"
 version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e1f15eeb9d93a05eb3c237332a10806eac1eb82444e54485bfcc1859c483c23"
 dependencies = [
  "ahash",
  "ash",
  "bytemuck",
+ "cgmath",
  "core-graphics-types",
  "crossbeam-queue",
  "half",
  "heck",
- "indexmap 1.9.3",
- "libloading 0.7.4",
+ "indexmap 2.0.0",
+ "libloading 0.8.0",
+ "nalgebra",
  "objc",
  "once_cell",
  "parking_lot",
  "proc-macro2",
  "quote",
+ "raw-window-handle",
  "regex",
  "serde",
  "serde_json",
@@ -1367,35 +1503,30 @@ dependencies = [
 [[package]]
 name = "vulkano-macros"
 version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "895b8a2cac1e7650d2d0552f2392da0970a358515ac11a34adaf19bfdc771b98"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+ "vulkano",
 ]
 
 [[package]]
 name = "vulkano-shaders"
 version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f8cf18e9becbc6d39f1c39e26bcf69546c93989553eb5748cd734a8a697a6e5"
 dependencies = [
  "ahash",
  "heck",
  "proc-macro2",
  "quote",
  "shaderc",
- "syn 1.0.109",
+ "syn 2.0.27",
  "vulkano",
 ]
 
 [[package]]
 name = "vulkano-util"
 version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a71b6df05a391161c1baec645a918437c2949d3494bf74c8358fde291d37f5f4"
 dependencies = [
  "ahash",
  "vulkano",
@@ -1406,8 +1537,6 @@ dependencies = [
 [[package]]
 name = "vulkano-win"
 version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "666c77efe5ea82837781961a6bcd957ee2e926777e8de0005f580335d6eaefe7"
 dependencies = [
  "core-graphics-types",
  "objc",
@@ -1563,6 +1692,16 @@ checksum = "9b85cbef8c220a6abc02aefd892dfc0fc23afb1c6a426316ec33253a3877249b"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "wide"
+version = "0.7.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa469ffa65ef7e0ba0f164183697b89b854253fd31aeb92358b7b6155177d62f"
+dependencies = [
+ "bytemuck",
+ "safe_arch",
 ]
 
 [[package]]
