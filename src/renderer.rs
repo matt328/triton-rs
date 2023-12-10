@@ -3,10 +3,10 @@ use std::{sync::Arc, time::Instant};
 use anyhow::Context;
 use log::info;
 use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
+    buffer::Subbuffer,
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderingAttachmentInfo, RenderingInfo,
+        PrimaryAutoCommandBuffer, RenderingAttachmentInfo, RenderingInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features, Queue,
@@ -14,18 +14,21 @@ use vulkano::{
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    memory::{self, allocator::StandardMemoryAllocator},
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
     render_pass::{AttachmentLoadOp, AttachmentStoreOp},
     swapchain::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
     sync::{self, GpuFuture},
-    Validated, Version, VulkanError, VulkanLibrary,
+    Validated, ValidationError, Version, VulkanError, VulkanLibrary,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::shaders::{create_pipeline, Position};
+use crate::{
+    mesh::{Mesh, MeshBuilder},
+    shaders::{create_pipeline, Position},
+};
 
 pub struct Renderer {
     recreate_swapchain: bool,
@@ -37,7 +40,7 @@ pub struct Renderer {
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     queue: Arc<Queue>,
     pipeline: Arc<GraphicsPipeline>,
-    vertex_buffer: Subbuffer<[Position]>,
+    triangles: Vec<Mesh>,
     device: Arc<Device>,
     previous_instant: Instant,
     max_frame_time: f64,
@@ -191,7 +194,7 @@ impl Renderer {
             Default::default(),
         ));
 
-        let vertices = [
+        let vertices = vec![
             Position {
                 position: [-0.5, -0.25],
             },
@@ -202,20 +205,30 @@ impl Renderer {
                 position: [0.25, -0.1],
             },
         ];
-        let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
+
+        let mesh = MeshBuilder::new()
+            .with_vertices(vertices)
+            .build(memory_allocator.clone())
+            .context("building mesh")?;
+
+        let vertices2 = vec![
+            Position {
+                position: [0.5, -0.25],
             },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
+            Position {
+                position: [1.0, 0.5],
             },
-            vertices,
-        )
-        .context("creating vertex buffer")?;
+            Position {
+                position: [1.25, -0.1],
+            },
+        ];
+
+        let mesh2 = MeshBuilder::new()
+            .with_vertices(vertices2)
+            .build(memory_allocator.clone())
+            .context("building mesh2")?;
+
+        let meshes = vec![mesh, mesh2];
 
         let previous_frame_end = Some(sync::now(device.clone()).boxed());
 
@@ -229,7 +242,7 @@ impl Renderer {
             command_buffer_allocator,
             queue,
             pipeline,
-            vertex_buffer,
+            triangles: meshes,
             device,
             previous_instant: Instant::now(),
             max_frame_time: 0.166667,
@@ -320,30 +333,32 @@ impl Renderer {
         )
         .context("Creating command buffer builder")?;
 
+        let color_attachments = vec![Some(RenderingAttachmentInfo {
+            load_op: AttachmentLoadOp::Clear,
+            store_op: AttachmentStoreOp::Store,
+            clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
+            ..RenderingAttachmentInfo::image_view(
+                self.attachment_image_views[image_index as usize].clone(),
+            )
+        })];
+
         builder
             .begin_rendering(RenderingInfo {
-                color_attachments: vec![Some(RenderingAttachmentInfo {
-                    load_op: AttachmentLoadOp::Clear,
-                    store_op: AttachmentStoreOp::Store,
-                    clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
-                    ..RenderingAttachmentInfo::image_view(
-                        self.attachment_image_views[image_index as usize].clone(),
-                    )
-                })],
+                color_attachments,
                 ..Default::default()
             })?
-            .set_viewport(0, [self.viewport.clone()].into_iter().collect())
-            .context("Setting Viewport")?
-            .bind_pipeline_graphics(self.pipeline.clone())
-            .context("Binding Pipeline")?
-            .bind_vertex_buffers(0, self.vertex_buffer.clone())
-            .context("Binding Vertex Buffers")?
-            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-            .context("Drawing")?
-            .end_rendering()
-            .context("Ending Rendering")?;
+            .set_viewport(0, [self.viewport.clone()].into_iter().collect())?
+            .bind_pipeline_graphics(self.pipeline.clone())?;
 
-        let command_buffer = builder.build().unwrap();
+        for mesh in &self.triangles[..] {
+            builder
+                .bind_vertex_buffers(0, mesh.vertex_buffer.clone())?
+                .draw(mesh.vertex_buffer.len() as u32, 1, 0, 0)?;
+        }
+
+        builder.end_rendering()?;
+
+        let command_buffer = builder.build()?;
 
         let future = self
             .previous_frame_end
