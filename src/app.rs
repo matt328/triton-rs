@@ -1,8 +1,22 @@
 use std::sync::Arc;
 
+use anyhow::Context;
+use log::info;
+use tracing::{span, Level};
+use vulkano::sync::GpuFuture;
 use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator, device::{Features, DeviceExtensions}, instance::{InstanceCreateInfo, InstanceExtensions, InstanceCreateFlags}, Version,
+    buffer::Subbuffer,
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderingAttachmentInfo, RenderingInfo,
+    },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
+    device::{DeviceExtensions, Features},
+    instance::{InstanceCreateInfo, InstanceExtensions},
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
+    render_pass::{AttachmentLoadOp, AttachmentStoreOp},
+    swapchain::PresentMode,
+    Version,
 };
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
@@ -18,27 +32,17 @@ pub struct App {
     pub windows: VulkanoWindows,
     pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     pub descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+    viewport: Viewport,
+    pipeline: Arc<GraphicsPipeline>,
 }
+
+#[cfg(target_os = "macos")]
+use vulkano::instance::InstanceCreateFlags;
+
+use crate::shaders::{create_pipeline, Position};
 
 impl App {
-    pub fn open(&mut self, event_loop: &EventLoop<()>) {
-        // Create window
-        let _id1 = self.windows.create_window(
-            event_loop,
-            &self.context,
-            &WindowDescriptor {
-                width: WINDOW_WIDTH,
-                height: WINDOW_HEIGHT,
-                title: "Triton Application".to_string(),
-                ..Default::default()
-            },
-            |_| {},
-        );
-    }
-}
-
-impl Default for App {
-    fn default() -> Self {
+    pub fn new(event_loop: &EventLoop<()>) -> anyhow::Result<Self> {
         let config = VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
                 #[cfg(target_os = "macos")]
@@ -69,15 +73,116 @@ impl Default for App {
             context.device().clone(),
             Default::default(),
         ));
+
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             context.device().clone(),
         ));
 
-        App {
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent: [WINDOW_HEIGHT, WINDOW_WIDTH],
+            depth_range: 0.0..=1.0,
+        };
+
+        let mut windows = VulkanoWindows::default();
+
+        info!("Creating Window");
+        let _id1 = windows.create_window(
+            event_loop,
+            &context,
+            &WindowDescriptor {
+                width: WINDOW_WIDTH,
+                height: WINDOW_HEIGHT,
+                title: "Triton Application".to_string(),
+                present_mode: PresentMode::Immediate,
+                ..Default::default()
+            },
+            |_| {},
+        );
+
+        let renderer = windows
+            .get_primary_renderer()
+            .context("getting primary renderer")?;
+
+        let pipeline = create_pipeline(context.device(), renderer);
+
+        Ok(App {
             context,
-            windows: VulkanoWindows::default(),
+            windows,
             command_buffer_allocator,
             descriptor_set_allocator,
-        }
+            viewport,
+            pipeline,
+        })
+    }
+
+    pub fn render_game(
+        &mut self,
+        previous_state: f64,
+        next_state: f64,
+        blend_factor: f64,
+        vertex_buffer: &Subbuffer<[Position]>,
+    ) -> anyhow::Result<()> {
+        let _span = span!(Level::INFO, "render_game").entered();
+
+        let renderer = self
+            .windows
+            .get_primary_renderer_mut()
+            .context("Could not get primary renderer")?;
+
+        let future = renderer.acquire().context("Acquiring future")?;
+
+        let queue = renderer.graphics_queue();
+
+        // Maybe keep this outside?
+        let _state = App::blend_state(previous_state, next_state, blend_factor);
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            &self.command_buffer_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .context("Creating Command Buffer Builder")?;
+
+        let image = renderer.swapchain_image_view().clone();
+
+        builder
+            .begin_rendering(RenderingInfo {
+                color_attachments: vec![Some(RenderingAttachmentInfo {
+                    load_op: AttachmentLoadOp::Clear,
+                    store_op: AttachmentStoreOp::Store,
+                    clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
+                    ..RenderingAttachmentInfo::image_view(image)
+                })],
+                ..Default::default()
+            })
+            .context("begin rendering")?
+            .set_viewport(0, [self.viewport.clone()].into_iter().collect())
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .bind_vertex_buffers(0, vertex_buffer.clone())
+            .draw(vertex_buffer.len() as u32, 1, 0, 0)
+            .context("draw")?
+            .end_rendering()
+            .context("end rendering")?;
+
+        let cmd_buffer_span = span!(Level::TRACE, "build_command_buffer").entered();
+        let command_buffer = builder.build().unwrap();
+        cmd_buffer_span.exit();
+
+        let present = span!(Level::TRACE, "present").entered();
+        renderer.present(
+            future
+                .then_execute(queue.clone(), command_buffer)
+                .context("then execute")?
+                .boxed(),
+            false,
+        );
+        present.exit();
+
+        Ok(())
+    }
+
+    fn blend_state(previous_state: f64, next_state: f64, blend_factor: f64) -> f64 {
+        previous_state + (blend_factor * (next_state - previous_state))
     }
 }

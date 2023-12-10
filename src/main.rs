@@ -1,40 +1,37 @@
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use anyhow::Context;
-use log::error;
-use triton::{
-    app::App,
-    shaders::{create_pipeline, Position},
-};
+
+use tracing::{event, span, Level};
+use tracing_tracy::client::frame_mark;
+use triton::{app::App, shaders::Position};
 use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderingAttachmentInfo, RenderingInfo,
-    },
-    device::Queue,
-    image::view::ImageView,
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
-    pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
-    render_pass::{AttachmentLoadOp, AttachmentStoreOp},
-    sync::GpuFuture,
 };
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
 };
 
+use tracing_subscriber::layer::SubscriberExt;
+
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
 
 fn main() -> anyhow::Result<()> {
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
+    )
+    .expect("set up the subscriber");
+
+    let _span = span!(Level::TRACE, "root").entered();
+
     log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
 
     let event_loop = EventLoop::new();
 
-    let mut vulkan_app = App::default();
-
-    vulkan_app.open(&event_loop);
+    let mut vulkan_app = App::new(&event_loop).context("Creating App")?;
 
     let vertices = [
         Position {
@@ -59,19 +56,7 @@ fn main() -> anyhow::Result<()> {
             ..Default::default()
         },
         vertices,
-    )
-    .unwrap();
-
-    let pipeline = create_pipeline(
-        vulkan_app.context.device(),
-        &vulkan_app.windows.get_primary_renderer().unwrap(),
-    );
-
-    let viewport = Viewport {
-        offset: [0.0, 0.0],
-        extent: [WINDOW_HEIGHT, WINDOW_WIDTH],
-        depth_range: 0.0..=1.0,
-    };
+    )?;
 
     // fixed timestep items
     let mut previous_instant = Instant::now();
@@ -84,13 +69,13 @@ fn main() -> anyhow::Result<()> {
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
-
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => *control_flow = ControlFlow::Exit,
             Event::RedrawRequested(_) => {
+                let _span = span!(Level::TRACE, "redraw_requested").entered();
                 let current_instant = Instant::now();
                 let mut elapsed = current_instant
                     .duration_since(previous_instant)
@@ -102,45 +87,36 @@ fn main() -> anyhow::Result<()> {
 
                 // Keep updating as much as we can between render ticks
                 while accumulated_time >= fixed_time_step {
+                    let _span = span!(
+                        Level::TRACE,
+                        "update_loop",
+                        accumulated_time,
+                        fixed_time_step
+                    )
+                    .entered();
                     prev_object_rotation = object_rotation;
+                    event!(Level::TRACE, accumulated_time);
                     object_rotation = update_game(object_rotation);
                     accumulated_time -= fixed_time_step;
                 }
 
                 let blending_factor = accumulated_time / fixed_time_step;
-                let renderer = vulkan_app.windows.get_primary_renderer_mut().unwrap();
 
-                let future = match renderer.acquire() {
-                    Err(e) => {
-                        error!("{e}");
-                        return;
-                    }
-                    Ok(future) => future,
-                };
-
-                let f = render_game(
-                    blending_factor,
-                    future,
+                let _rendered = vulkan_app.render_game(
                     prev_object_rotation,
                     object_rotation,
-                    &vulkan_app.command_buffer_allocator,
-                    &renderer.graphics_queue(),
-                    renderer.swapchain_image_view().clone(),
-                    viewport.clone(),
-                    pipeline.clone(),
+                    blending_factor,
                     &vertex_buffer,
                 );
 
-                renderer.present(f, false);
-
+                frame_mark();
                 previous_instant = current_instant;
             }
             Event::MainEventsCleared => {
                 vulkan_app
                     .windows
                     .get_primary_window()
-                    .unwrap()
-                    .request_redraw();
+                    .map(|w| w.request_redraw());
             }
             _ => {}
         }
@@ -149,51 +125,7 @@ fn main() -> anyhow::Result<()> {
 
 /// Mutates the game state, and produces the next state
 fn update_game(state: f64) -> f64 {
-    state + 1.0
-}
-
-/// Calculates the 'current' state by applying the blending factor between the two states
-fn render_game(
-    blend_factor: f64,
-    future: Box<dyn GpuFuture>,
-    previous_state: f64,
-    next_state: f64,
-    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
-    queue: &Arc<Queue>,
-    image: Arc<ImageView>,
-    viewport: Viewport,
-    pipeline: Arc<GraphicsPipeline>,
-    vertex_buffer: &Subbuffer<[Position]>,
-) -> Box<dyn GpuFuture> {
-    let _state = previous_state + (blend_factor * (next_state - previous_state));
-
-    let mut builder = AutoCommandBufferBuilder::primary(
-        command_buffer_allocator,
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    )
-    .unwrap();
-
-    builder
-        .begin_rendering(RenderingInfo {
-            color_attachments: vec![Some(RenderingAttachmentInfo {
-                load_op: AttachmentLoadOp::Clear,
-                store_op: AttachmentStoreOp::Store,
-                clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
-                ..RenderingAttachmentInfo::image_view(image)
-            })],
-            ..Default::default()
-        })
-        .unwrap()
-        .set_viewport(0, [viewport.clone()].into_iter().collect())
-        .bind_pipeline_graphics(pipeline.clone())
-        .bind_vertex_buffers(0, vertex_buffer.clone())
-        .draw(vertex_buffer.len() as u32, 1, 0, 0)
-        .unwrap()
-        .end_rendering()
-        .unwrap();
-
-    let command_buffer = builder.build().unwrap();
-
-    Box::new(future.then_execute(queue.clone(), command_buffer).unwrap())
+    let _span = span!(Level::TRACE, "update_game").entered();
+    let new_state = state + 1.0;
+    new_state
 }
