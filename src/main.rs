@@ -4,6 +4,7 @@ use anyhow::Context;
 
 use tracing::{event, span, Level};
 use tracing_tracy::client::frame_mark;
+use tracy_client::ProfiledAllocator;
 use triton::{app::App, shaders::Position};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
@@ -20,12 +21,16 @@ pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
 
 fn main() -> anyhow::Result<()> {
+    #[global_allocator]
+    static GLOBAL: ProfiledAllocator<std::alloc::System> =
+        ProfiledAllocator::new(std::alloc::System, 100);
+
     tracing::subscriber::set_global_default(
         tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
     )
     .expect("set up the subscriber");
 
-    let _span = span!(Level::TRACE, "root").entered();
+    let _root = span!(Level::INFO, "root").entered();
 
     log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
 
@@ -60,9 +65,10 @@ fn main() -> anyhow::Result<()> {
 
     // fixed timestep items
     let mut previous_instant = Instant::now();
-    let max_frame_time: f64 = 0.1;
+    let max_frame_time: f64 = 0.166666;
     let mut accumulated_time: f64 = 0.0;
     let fixed_time_step: f64 = 1.0 / 240.0;
+    let mut current_instant = Instant::now();
 
     let mut object_rotation = 0.0;
     let mut prev_object_rotation = 0.0;
@@ -75,11 +81,15 @@ fn main() -> anyhow::Result<()> {
                 ..
             } => *control_flow = ControlFlow::Exit,
             Event::RedrawRequested(_) => {
-                let _span = span!(Level::TRACE, "redraw_requested").entered();
-                let current_instant = Instant::now();
+                let _redraw = span!(Level::INFO, "redraw_requested", accumulated_time).entered();
+                current_instant = Instant::now();
+
                 let mut elapsed = current_instant
                     .duration_since(previous_instant)
                     .as_secs_f64();
+
+                event!(Level::INFO, elapsed);
+
                 if elapsed > max_frame_time {
                     elapsed = max_frame_time;
                 }
@@ -87,21 +97,16 @@ fn main() -> anyhow::Result<()> {
 
                 // Keep updating as much as we can between render ticks
                 while accumulated_time >= fixed_time_step {
-                    let _span = span!(
-                        Level::TRACE,
-                        "update_loop",
-                        accumulated_time,
-                        fixed_time_step
-                    )
-                    .entered();
+                    let _update_span = span!(Level::INFO, "update_loop",).entered();
+                    event!(Level::INFO, accumulated_time);
                     prev_object_rotation = object_rotation;
-                    event!(Level::TRACE, accumulated_time);
                     object_rotation = update_game(object_rotation);
                     accumulated_time -= fixed_time_step;
                 }
 
                 let blending_factor = accumulated_time / fixed_time_step;
 
+                event!(Level::INFO, blending_factor);
                 let current_state =
                     blend_state(prev_object_rotation, object_rotation, blending_factor);
 
@@ -123,12 +128,12 @@ fn main() -> anyhow::Result<()> {
 
 /// Mutates the game state, and produces the next state
 fn update_game(state: f64) -> f64 {
-    let _span = span!(Level::TRACE, "update_game").entered();
+    let _update_game_span = span!(Level::INFO, "update_game").entered();
     let new_state = state + 1.0;
     new_state
 }
 
 fn blend_state(previous_state: f64, next_state: f64, blending_factor: f64) -> f64 {
-    let _span = span!(Level::TRACE, "blend_state").entered();
+    let _blend_state_span = span!(Level::INFO, "blend_state").entered();
     previous_state + (blending_factor * (next_state - previous_state))
 }

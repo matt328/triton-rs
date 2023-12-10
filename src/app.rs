@@ -94,7 +94,6 @@ impl App {
                 width: WINDOW_WIDTH,
                 height: WINDOW_HEIGHT,
                 title: "Triton Application".to_string(),
-                present_mode: PresentMode::Immediate,
                 ..Default::default()
             },
             |_| {},
