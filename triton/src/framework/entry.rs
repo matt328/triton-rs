@@ -1,4 +1,4 @@
-use log::info;
+use log::{info, error};
 use std::time::Instant;
 
 use vulkano_util::{
@@ -70,7 +70,13 @@ impl Application {
                     let blending_factor = accumulated_time / fixed_time_step;
                     let renderer = vulkano_windows.get_primary_renderer_mut().unwrap();
 
-                    let future = renderer.acquire().unwrap();
+                    let future = match renderer.acquire() {
+                        Err(e) => {
+                            error!("{e}");
+                            return;
+                        }
+                        Ok(future) => future,
+                    };
 
                     let mut builder = AutoCommandBufferBuilder::primary(
                         &command_buffer_allocator,
