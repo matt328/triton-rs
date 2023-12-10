@@ -16,7 +16,7 @@ pub struct VertexPositionColor {
     color: [f32; 3],
 }
 
-pub const VERTICES: [VertexPositionColor; 8] = [
+pub const CUBE_VERTICES: [VertexPositionColor; 8] = [
     VertexPositionColor {
         position: [-1.0, -1.0, -1.0],
         color: [0.0, 0.0, 0.0],
@@ -51,7 +51,7 @@ pub const VERTICES: [VertexPositionColor; 8] = [
     },
 ];
 
-pub const INDICES: [u16; 36] = [
+pub const CUBE_INDICES: [u16; 36] = [
     0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 7, 6, 5, 5, 4, 7, 4, 0, 3, 3, 7, 4, 4, 5, 1, 1, 0, 4, 3, 2,
     6, 6, 7, 3,
 ];

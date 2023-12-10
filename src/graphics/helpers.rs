@@ -7,6 +7,7 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryAutoCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
+    descriptor_set::PersistentDescriptorSet,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Queue, QueueFlags,
@@ -24,14 +25,14 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        GraphicsPipeline, Pipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::ShaderModule,
     swapchain::{Surface, Swapchain},
 };
 
-use super::shaders::Position;
+use super::shaders::{Position, VertexPositionColor};
 
 pub fn select_physical_device(
     instance: &Arc<Instance>,
@@ -111,12 +112,10 @@ pub fn get_pipeline(
     render_pass: Arc<RenderPass>,
     viewport: Viewport,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let vs = vs
-        .entry_point("main")
-        .context("getting shader entry point")?;
+    let vs = vs.entry_point("main").context("getting vs entry point")?;
     let fs = fs.entry_point("main").context("getting fs entry point")?;
 
-    let vertex_input_state = Position::per_vertex()
+    let vertex_input_state = VertexPositionColor::per_vertex()
         .definition(&vs.info().input_interface)
         .context("creating vertex input state")?;
 
@@ -163,11 +162,13 @@ pub fn get_command_buffers(
     queue: &Arc<Queue>,
     pipeline: &Arc<GraphicsPipeline>,
     framebuffers: &[Arc<Framebuffer>],
-    vertex_buffer: &Subbuffer<[Position]>,
+    vertex_buffer: &Subbuffer<[VertexPositionColor]>,
+    index_buffer: &Subbuffer<[u16]>,
+    uniform_buffer_sets: &Vec<Arc<PersistentDescriptorSet>>,
 ) -> anyhow::Result<Vec<Arc<PrimaryAutoCommandBuffer>>> {
     let mut results: Vec<Arc<PrimaryAutoCommandBuffer>> = vec![];
 
-    for framebuffer in framebuffers.iter() {
+    for (i, framebuffer) in framebuffers.iter().enumerate() {
         let mut builder = AutoCommandBufferBuilder::primary(
             command_buffer_allocator,
             queue.queue_family_index(),
@@ -185,8 +186,15 @@ pub fn get_command_buffers(
                 },
             )?
             .bind_pipeline_graphics(pipeline.clone())?
+            .bind_descriptor_sets(
+                vulkano::pipeline::PipelineBindPoint::Graphics,
+                pipeline.layout().clone(),
+                0,
+                uniform_buffer_sets[i].clone(),
+            )?
             .bind_vertex_buffers(0, vertex_buffer.clone())?
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)?
+            .bind_index_buffer(index_buffer.clone())?
+            .draw_indexed(index_buffer.len() as u32, 1, 0, 0, 0)?
             .end_render_pass(Default::default())?;
 
         results.push(builder.build()?);

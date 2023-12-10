@@ -1,21 +1,30 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use anyhow::Context;
+use cgmath::{perspective, Deg, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use log::info;
 
 #[cfg(target_os = "macos")]
 use vulkano::instance::InstanceCreateFlags;
 
 use vulkano::{
+    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferExecFuture,
         PrimaryAutoCommandBuffer,
     },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, PersistentDescriptorSet,
+        WriteDescriptorSet,
+    },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
-    memory::allocator::StandardMemoryAllocator,
-    pipeline::graphics::viewport::Viewport,
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    pipeline::{graphics::viewport::Viewport, Pipeline},
     render_pass::RenderPass,
     shader::ShaderModule,
     swapchain::{
@@ -30,6 +39,8 @@ use vulkano::{
     Validated, VulkanError,
 };
 use winit::{dpi::PhysicalSize, window::Window};
+
+use crate::graphics::shaders::{CUBE_INDICES, CUBE_VERTICES};
 
 use super::{
     helpers,
@@ -54,13 +65,17 @@ pub struct Renderer {
     fs: Arc<ShaderModule>,
 
     command_buffer_allocator: StandardCommandBufferAllocator,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     queue: Arc<Queue>,
 
     render_pass: Arc<RenderPass>,
 
+    // Per Frame Data
     previous_fence_i: u32,
     command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
     fences: FenceSignalFuturesList,
+    uniform_buffers: Vec<Subbuffer<shaders::vs_position_color::FrameData>>,
+    uniform_buffer_sets: Vec<Arc<PersistentDescriptorSet>>,
 
     mesh: BasicMesh,
 }
@@ -144,25 +159,15 @@ impl Renderer {
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-        let vertices = vec![
-            shaders::Position {
-                position: [-0.5, -0.5],
-            },
-            shaders::Position {
-                position: [0.0, 0.5],
-            },
-            shaders::Position {
-                position: [0.5, -0.25],
-            },
-        ];
-
         let mesh = MeshBuilder::default()
-            .with_vertices(vertices)
+            .with_vertices(CUBE_VERTICES.to_vec())
+            .with_indices(CUBE_INDICES.to_vec())
             .build(memory_allocator.clone())
             .context("building mesh")?;
 
-        let vs = shaders::vs::load(device.clone()).expect("failed to create shader module");
-        let fs = shaders::fs::load(device.clone()).expect("failed to create shader module");
+        let vs = shaders::vs_position_color::load(device.clone())
+            .expect("failed to create shader module");
+        let fs = shaders::fs_basic::load(device.clone()).expect("failed to create shader module");
 
         let viewport = Viewport {
             offset: [0.0, 0.0],
@@ -178,8 +183,48 @@ impl Renderer {
             viewport.clone(),
         )?;
 
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+
+        let layout = pipeline.layout().set_layouts().get(0).unwrap();
+
         let command_buffer_allocator =
             StandardCommandBufferAllocator::new(device.clone(), Default::default());
+
+        let frames_in_flight = images.len();
+
+        let uniform_buffers = (0..swapchain.image_count())
+            .map(|_| {
+                Buffer::new_sized(
+                    memory_allocator.clone(),
+                    BufferCreateInfo {
+                        usage: BufferUsage::UNIFORM_BUFFER,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo {
+                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        let uniform_buffer_sets = uniform_buffers
+            .iter()
+            .map(|buffer| {
+                PersistentDescriptorSet::new(
+                    &descriptor_set_allocator,
+                    pipeline.layout().set_layouts()[0].clone(),
+                    [WriteDescriptorSet::buffer(0, buffer.clone())],
+                    [],
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
 
         let command_buffers = helpers::get_command_buffers(
             &command_buffer_allocator,
@@ -187,9 +232,9 @@ impl Renderer {
             &pipeline,
             &framebuffers,
             &mesh.vertex_buffer,
+            &mesh.index_buffer,
+            &uniform_buffer_sets,
         )?;
-
-        let frames_in_flight = images.len();
 
         Ok(Renderer {
             device,
@@ -207,6 +252,9 @@ impl Renderer {
             need_swapchain_recreation: true,
             fences: vec![None; frames_in_flight],
             previous_fence_i: 0,
+            descriptor_set_allocator,
+            uniform_buffers,
+            uniform_buffer_sets,
         })
     }
 
@@ -249,6 +297,8 @@ impl Renderer {
                     &new_pipeline,
                     &new_framebuffers,
                     &self.mesh.vertex_buffer,
+                    &self.mesh.index_buffer,
+                    &self.uniform_buffer_sets,
                 )?;
             }
         }
@@ -284,6 +334,33 @@ impl Renderer {
             // Use the existing FenceSignalFuture
             Some(fence) => fence.boxed(),
         };
+
+        // Move this to a 'camera' struct
+        let fov: Deg<f32> = Deg(60.0);
+        let aspect_ratio: f32 = self.viewport.extent[0] / self.viewport.extent[1];
+        let near: f32 = 0.1;
+        let far: f32 = 100.0;
+        let projection = perspective(fov, aspect_ratio, near, far);
+        let eye = Point3::new(1.0, 2.0, 3.0);
+        let center = Point3::new(0.0, 0.0, 0.0);
+        let up = Vector3::new(0.0, 1.0, 0.0);
+        let view = Matrix4::look_at_rh(eye, center, up);
+
+        /* Move this into an entity
+        Also split FrameData into separate FrameData and EntityData uniform buffers
+        Next move EntityData uniform buffers all into a SSBO (shader storage buffer object)
+        that can just be
+        set once per frame and referenced in the shader via gl_InstanceId i think?
+        */
+        let model: Matrix4<f32> = Matrix4::identity();
+
+        // Update Per Frame buffers here
+        *self.uniform_buffers[image_i as usize].write().unwrap() =
+            shaders::vs_position_color::FrameData {
+                model: model.into(),
+                view: view.into(),
+                proj: projection.into(),
+            };
 
         let future = previous_future
             .join(acquire_future)
