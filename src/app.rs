@@ -118,9 +118,7 @@ impl App {
 
     pub fn render_game(
         &mut self,
-        previous_state: f64,
-        next_state: f64,
-        blend_factor: f64,
+        state: f64,
         vertex_buffer: &Subbuffer<[Position]>,
     ) -> anyhow::Result<()> {
         let _span = span!(Level::INFO, "render_game").entered();
@@ -133,9 +131,6 @@ impl App {
         let future = renderer.acquire().context("Acquiring future")?;
 
         let queue = renderer.graphics_queue();
-
-        // Maybe keep this outside?
-        let _state = App::blend_state(previous_state, next_state, blend_factor);
 
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
@@ -180,9 +175,5 @@ impl App {
         present.exit();
 
         Ok(())
-    }
-
-    fn blend_state(previous_state: f64, next_state: f64, blend_factor: f64) -> f64 {
-        previous_state + (blend_factor * (next_state - previous_state))
     }
 }

@@ -102,12 +102,10 @@ fn main() -> anyhow::Result<()> {
 
                 let blending_factor = accumulated_time / fixed_time_step;
 
-                let _rendered = vulkan_app.render_game(
-                    prev_object_rotation,
-                    object_rotation,
-                    blending_factor,
-                    &vertex_buffer,
-                );
+                let current_state =
+                    blend_state(prev_object_rotation, object_rotation, blending_factor);
+
+                let _rendered = vulkan_app.render_game(current_state, &vertex_buffer);
 
                 frame_mark();
                 previous_instant = current_instant;
@@ -128,4 +126,9 @@ fn update_game(state: f64) -> f64 {
     let _span = span!(Level::TRACE, "update_game").entered();
     let new_state = state + 1.0;
     new_state
+}
+
+fn blend_state(previous_state: f64, next_state: f64, blending_factor: f64) -> f64 {
+    let _span = span!(Level::TRACE, "blend_state").entered();
+    previous_state + (blending_factor * (next_state - previous_state))
 }
