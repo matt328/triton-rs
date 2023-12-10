@@ -36,16 +36,20 @@ pub struct Renderer {
     device: Arc<Device>,
     swapchain: Arc<Swapchain>,
     render_pass: Arc<RenderPass>,
+
     viewport: Viewport,
-    vs: Arc<ShaderModule>,
-    fs: Arc<ShaderModule>,
-    command_buffer_allocator: StandardCommandBufferAllocator,
-    command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
-    queue: Arc<Queue>,
-    mesh: BasicMesh,
     window_resized: bool,
     dimensions: PhysicalSize<u32>,
     need_swapchain_recreation: bool,
+
+    vs: Arc<ShaderModule>,
+    fs: Arc<ShaderModule>,
+
+    command_buffer_allocator: StandardCommandBufferAllocator,
+    queue: Arc<Queue>,
+
+    previous_fence_i: u32,
+    command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
     fences: Vec<
         Option<
             Arc<
@@ -59,7 +63,8 @@ pub struct Renderer {
             >,
         >,
     >,
-    previous_fence_i: u32,
+
+    mesh: BasicMesh,
 }
 
 impl Renderer {
@@ -233,8 +238,7 @@ impl Renderer {
                     self.fs.clone(),
                     self.render_pass.clone(),
                     self.viewport.clone(),
-                )
-                .unwrap();
+                )?;
 
                 self.command_buffers = helpers::get_command_buffers(
                     &self.command_buffer_allocator,
@@ -264,7 +268,7 @@ impl Renderer {
 
         // wait for the fence related to this image to finish (normally this would be the oldest fence)
         if let Some(image_fence) = &self.fences[image_i as usize] {
-            image_fence.wait(None).unwrap();
+            image_fence.wait(None)?;
         }
 
         let previous_future = match self.fences[self.previous_fence_i as usize].clone() {
@@ -272,7 +276,6 @@ impl Renderer {
             None => {
                 let mut now = sync::now(self.device.clone());
                 now.cleanup_finished();
-
                 now.boxed()
             }
             // Use the existing FenceSignalFuture
