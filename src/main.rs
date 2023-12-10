@@ -1,8 +1,11 @@
 use std::{sync::Arc, time::Instant};
 
 use anyhow::Context;
-use log::{error, info};
-use triton::app::App;
+use log::error;
+use triton::{
+    app::App,
+    shaders::{fs, vs, Position},
+};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -37,13 +40,6 @@ use winit::{
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
 
-#[derive(BufferContents, V1)]
-#[repr(C)]
-struct Vertex {
-    #[format(R32G32_SFLOAT)]
-    position: [f32; 2],
-}
-
 fn main() -> anyhow::Result<()> {
     log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
 
@@ -54,13 +50,13 @@ fn main() -> anyhow::Result<()> {
     vulkan_app.open(&event_loop);
 
     let vertices = [
-        Vertex {
+        Position {
             position: [-0.5, -0.25],
         },
-        Vertex {
+        Position {
             position: [0.0, 0.5],
         },
-        Vertex {
+        Position {
             position: [0.25, -0.1],
         },
     ];
@@ -79,36 +75,6 @@ fn main() -> anyhow::Result<()> {
     )
     .unwrap();
 
-    mod vs {
-        vulkano_shaders::shader! {
-            ty: "vertex",
-            src: r"
-                #version 450
-
-                layout(location = 0) in vec2 position;
-
-                void main() {
-                    gl_Position = vec4(position, 0.0, 1.0);
-                }
-            ",
-        }
-    }
-
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            src: r"
-                #version 450
-
-                layout(location = 0) out vec4 f_color;
-
-                void main() {
-                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-                }
-            ",
-        }
-    }
-
     let pipeline = {
         let device = vulkan_app.context.device();
         let vs = vs::load(device.clone())
@@ -120,7 +86,7 @@ fn main() -> anyhow::Result<()> {
             .entry_point("main")
             .unwrap();
 
-        let vertex_input_state = Vertex::per_vertex()
+        let vertex_input_state = Position::per_vertex()
             .definition(&vs.info().input_interface)
             .unwrap();
 
@@ -138,9 +104,6 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
 
         let subpass = PipelineRenderingCreateInfo {
-            // We specify a single color attachment that will be rendered to. When we begin
-            // rendering, we will specify a swapchain image to be used as this attachment, so here
-            // we set its format to be the same format as the swapchain.
             color_attachment_formats: vec![Some(
                 vulkan_app
                     .windows
@@ -267,7 +230,7 @@ fn render_game(
     image: Arc<ImageView>,
     viewport: Viewport,
     pipeline: Arc<GraphicsPipeline>,
-    vertex_buffer: &Subbuffer<[Vertex]>,
+    vertex_buffer: &Subbuffer<[Position]>,
 ) -> Box<dyn GpuFuture> {
     let state = previous_state + (blend_factor * (next_state - previous_state));
 
@@ -301,7 +264,3 @@ fn render_game(
 
     Box::new(future.then_execute(queue.clone(), command_buffer).unwrap())
 }
-
-// Calculate state function
-
-//

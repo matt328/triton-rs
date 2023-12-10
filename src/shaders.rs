@@ -1,85 +1,118 @@
+use std::sync::Arc;
+
 use vulkano::{
-    buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, shader::EntryPoint,
+    buffer::BufferContents,
+    device::Device,
+    pipeline::{
+        graphics::{
+            color_blend::ColorBlendState,
+            input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            subpass::PipelineRenderingCreateInfo,
+            vertex_input::{Vertex, VertexDefinition},
+            viewport::ViewportState,
+            GraphicsPipelineCreateInfo,
+        },
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+    },
 };
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
 pub struct Position {
-    #[format(R32G32B32_SFLOAT)]
-    position: [f32; 3],
-}
-
-#[derive(BufferContents, Vertex)]
-#[repr(C)]
-pub struct Normal {
-    #[format(R32G32B32_SFLOAT)]
-    normal: [f32; 3],
-}
-
-pub struct Effect {
-    pub vertex: EntryPoint,
-    pub tess_control: Option<EntryPoint>,
-    pub tess_evaluation: Option<EntryPoint>,
-    pub fragment: EntryPoint,
-}
-
-impl Effect {
-    pub fn builder(vertex_shader: EntryPoint, fragment_shader: EntryPoint) -> EffectBuilder {
-        EffectBuilder::new(vertex_shader, fragment_shader)
-    }
-
-    pub fn is_tesselation(&self) -> bool {
-        self.tess_control.is_some() && self.tess_evaluation.is_some()
-    }
-}
-
-pub struct EffectBuilder {
-    vertex: EntryPoint,
-    tess_control: Option<EntryPoint>,
-    tess_evaluation: Option<EntryPoint>,
-    fragment: EntryPoint,
-}
-
-impl EffectBuilder {
-    pub fn new(vertex_shader: EntryPoint, fragment_shader: EntryPoint) -> EffectBuilder {
-        EffectBuilder {
-            vertex: vertex_shader,
-            fragment: fragment_shader,
-            tess_control: None,
-            tess_evaluation: None,
-        }
-    }
-
-    pub fn tesselation_control_shader(mut self, shader: EntryPoint) -> EffectBuilder {
-        self.tess_control = Some(shader);
-        self
-    }
-
-    pub fn tesselation_evaluation_shader(mut self, shader: EntryPoint) -> EffectBuilder {
-        self.tess_evaluation = Some(shader);
-        self
-    }
-
-    pub fn build(self) -> Effect {
-        Effect {
-            vertex: self.vertex,
-            tess_control: self.tess_control,
-            tess_evaluation: self.tess_evaluation,
-            fragment: self.fragment,
-        }
-    }
+    #[format(R32G32_SFLOAT)]
+    pub position: [f32; 2],
 }
 
 pub mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "./assets/shaders/basic/vert.glsl",
+        src: r"
+            #version 450
+
+            layout(location = 0) in vec2 position;
+
+            void main() {
+                gl_Position = vec4(position, 0.0, 1.0);
+            }
+        ",
     }
 }
 
 pub mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "./assets/shaders/basic/frag.glsl"
+        src: r"
+            #version 450
+
+            layout(location = 0) out vec4 f_color;
+
+            void main() {
+                f_color = vec4(1.0, 0.0, 0.0, 1.0);
+            }
+        ",
     }
+}
+
+pub fn create_pipeline(device: &Arc<Device>) -> Arc<GraphicsPipeline> {
+    let pipeline = {
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+
+        let vertex_input_state = Position::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+
+        let stages = [
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
+        ];
+
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+
+        let subpass = PipelineRenderingCreateInfo {
+            color_attachment_formats: vec![Some(
+                vulkan_app
+                    .windows
+                    .get_primary_renderer()
+                    .unwrap()
+                    .swapchain_format(),
+            )],
+            ..Default::default()
+        };
+
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                rasterization_state: Some(RasterizationState::default()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::new(
+                    subpass.color_attachment_formats.len() as u32,
+                )),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
+    pipeline
 }
