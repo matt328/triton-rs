@@ -173,7 +173,7 @@ fn main() -> anyhow::Result<()> {
 
     let viewport = Viewport {
         offset: [0.0, 0.0],
-        extent: [0.0, 0.0],
+        extent: [WINDOW_HEIGHT, WINDOW_WIDTH],
         depth_range: 0.0..=1.0,
     };
 
@@ -253,7 +253,6 @@ fn main() -> anyhow::Result<()> {
 
 /// Mutates the game state, and produces the next state
 fn update_game(state: f64) -> f64 {
-    info!("Update");
     state + 1.0
 }
 
@@ -270,12 +269,7 @@ fn render_game(
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: &Subbuffer<[Vertex]>,
 ) -> Box<dyn GpuFuture> {
-    info!(
-        "blend_factor: {} next_state: {} previous_state: {}",
-        blend_factor, next_state, previous_state
-    );
     let state = previous_state + (blend_factor * (next_state - previous_state));
-    info!("render: {}", state);
 
     let mut builder = AutoCommandBufferBuilder::primary(
         command_buffer_allocator,
