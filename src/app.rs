@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use vulkano::{
     command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator, device::Features,
+    descriptor_set::allocator::StandardDescriptorSetAllocator, device::{Features, DeviceExtensions}, instance::{InstanceCreateInfo, InstanceExtensions, InstanceCreateFlags}, Version,
 };
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
@@ -40,6 +40,21 @@ impl App {
 impl Default for App {
     fn default() -> Self {
         let config = VulkanoConfig {
+            instance_create_info: InstanceCreateInfo {
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+                max_api_version: Some(Version::V1_2),
+                enabled_extensions: InstanceExtensions {
+                    khr_portability_enumeration: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            device_extensions: DeviceExtensions {
+                khr_dynamic_rendering: true,
+                khr_portability_subset: true,
+                khr_swapchain: true,
+                ..Default::default()
+            },
             device_features: Features {
                 dynamic_rendering: true,
                 ..Default::default()

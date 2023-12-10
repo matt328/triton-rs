@@ -8,9 +8,9 @@ anyhow = "1.0.70"
 cgmath = "0.18"
 log = "0.4.17"
 log4rs = "1.2.0"
-vulkano = { path = "../vulkano/vulkano" }
-examples = { path = "../vulkano/examples"}
-vulkano-shaders = { path = "../vulkano/vulkano-shaders"}
-vulkano-win = { path = "../vulkano/vulkano-win" }
-vulkano-util = { path = "../vulkano/vulkano-util" }
+vulkano = { path = "./vulkano/vulkano" }
+examples = { path = "./vulkano/examples"}
+vulkano-shaders = { path = "./vulkano/vulkano-shaders"}
+vulkano-win = { path = "./vulkano/vulkano-win" }
+vulkano-util = { path = "./vulkano/vulkano-util" }
 winit = "0.28.3"

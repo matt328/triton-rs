@@ -4,7 +4,7 @@ use anyhow::Context;
 use log::error;
 use triton::{
     app::App,
-    shaders::{fs, vs, Position},
+    shaders::{fs, vs, Position, create_pipeline},
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -75,64 +75,10 @@ fn main() -> anyhow::Result<()> {
     )
     .unwrap();
 
-    let pipeline = {
-        let device = vulkan_app.context.device();
-        let vs = vs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-
-        let vertex_input_state = Position::per_vertex()
-            .definition(&vs.info().input_interface)
-            .unwrap();
-
-        let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
-        ];
-
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();
-
-        let subpass = PipelineRenderingCreateInfo {
-            color_attachment_formats: vec![Some(
-                vulkan_app
-                    .windows
-                    .get_primary_renderer()
-                    .unwrap()
-                    .swapchain_format(),
-            )],
-            ..Default::default()
-        };
-
-        GraphicsPipeline::new(
-            device.clone(),
-            None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::new(
-                    subpass.color_attachment_formats.len() as u32,
-                )),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
-            },
-        )
-        .unwrap()
-    };
+    let pipeline = create_pipeline(
+        vulkan_app.context.device(),
+        &vulkan_app.windows.get_primary_renderer().unwrap(),
+    );
 
     let viewport = Viewport {
         offset: [0.0, 0.0],

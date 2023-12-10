@@ -17,7 +17,9 @@ use vulkano::{
         layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
+    swapchain::Swapchain,
 };
+use vulkano_util::renderer::VulkanoWindowRenderer;
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -56,7 +58,10 @@ pub mod fs {
     }
 }
 
-pub fn create_pipeline(device: &Arc<Device>, swapchain) -> Arc<GraphicsPipeline> {
+pub fn create_pipeline(
+    device: &Arc<Device>,
+    renderer: &VulkanoWindowRenderer,
+) -> Arc<GraphicsPipeline> {
     let pipeline = {
         let vs = vs::load(device.clone())
             .unwrap()
@@ -85,13 +90,7 @@ pub fn create_pipeline(device: &Arc<Device>, swapchain) -> Arc<GraphicsPipeline>
         .unwrap();
 
         let subpass = PipelineRenderingCreateInfo {
-            color_attachment_formats: vec![Some(
-                vulkan_app
-                    .windows
-                    .get_primary_renderer()
-                    .unwrap()
-                    .swapchain_format(),
-            )],
+            color_attachment_formats: vec![Some(renderer.swapchain_format())],
             ..Default::default()
         };
 
