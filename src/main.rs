@@ -33,8 +33,7 @@ fn main() -> anyhow::Result<()> {
 
     let event_loop = EventLoop::new().context("Creating Event Loop")?;
 
-    let required_extensions =
-        Surface::required_extensions(&event_loop).context("querying required extensions")?;
+    let required_extensions = Surface::required_extensions(&event_loop);
 
     let window = Arc::new(
         WindowBuilder::new()

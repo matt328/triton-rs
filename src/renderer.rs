@@ -1,27 +1,29 @@
 use std::{sync::Arc, time::Instant};
 
 use anyhow::Context;
-use log::info;
+use log::{debug, info};
 use vulkano::{
-    buffer::Subbuffer,
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryAutoCommandBuffer, RenderingAttachmentInfo, RenderingInfo,
+        RenderingAttachmentInfo, RenderingInfo,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features, Queue,
-        QueueCreateInfo, QueueFlags,
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, Image, ImageUsage},
-    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
-    memory::{self, allocator::StandardMemoryAllocator},
+    instance::{
+        debug::{DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo},
+        Instance, InstanceCreateInfo, InstanceExtensions,
+    },
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
     render_pass::{AttachmentLoadOp, AttachmentStoreOp},
     swapchain::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
     sync::{self, GpuFuture},
-    Validated, ValidationError, Version, VulkanError, VulkanLibrary,
+    Validated, Version, VulkanError, VulkanLibrary,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -46,6 +48,43 @@ pub struct Renderer {
     max_frame_time: f64,
     accumulated_time: f64,
     fixed_time_step: f64,
+    _callback: DebugUtilsMessenger,
+}
+
+fn select_physical_device(
+    instance: &Arc<Instance>,
+    surface: &Arc<Surface>,
+    device_extensions: &DeviceExtensions,
+) -> anyhow::Result<(Arc<PhysicalDevice>, u32)> {
+    instance
+        .enumerate_physical_devices()
+        .context("Enumerating Physical Devices")?
+        .filter(|p| {
+            p.api_version() >= Version::V1_3 || p.supported_extensions().khr_dynamic_rendering
+        })
+        .filter(|p| p.supported_extensions().contains(device_extensions))
+        .filter_map(|p| {
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                        && p.surface_support(i as u32, surface).unwrap_or(false)
+                })
+                .map(|i| (p, i as u32))
+        })
+        .min_by_key(|(p, _)| {
+            // We assign a lower score to device types that are likely to be faster/better.
+            match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            }
+        })
+        .context("Getting Physical Device and Queue")
 }
 
 impl Renderer {
@@ -60,16 +99,29 @@ impl Renderer {
             InstanceCreateInfo {
                 #[cfg(target_os = "macos")]
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                max_api_version: Some(Version::V1_2),
+                max_api_version: Some(Version::V1_3),
                 enabled_extensions: InstanceExtensions {
                     #[cfg(target_os = "macos")]
                     khr_portability_enumeration: true,
-                    ..required_extensions.clone()
+                    ext_debug_utils: true,
+                    ..required_extensions
                 },
                 ..Default::default()
             },
         )
         .context("Creating Instance")?;
+
+        let callback = unsafe {
+            DebugUtilsMessenger::new(
+                instance.clone(),
+                DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
+                    |_message_severity, _message_type, callback_data| {
+                        debug!("Debug callback: {:?}", callback_data.message);
+                    },
+                )),
+            )
+            .context("")?
+        };
 
         let surface = Surface::from_window(instance.clone(), window.clone())
             .context("Getting Surface from Window")?;
@@ -82,35 +134,8 @@ impl Renderer {
             ..Default::default()
         };
 
-        let (physical_device, queue_family_index) = instance
-            .enumerate_physical_devices()
-            .context("Enumerating Physical Devices")?
-            .filter(|p| {
-                p.api_version() >= Version::V1_3 || p.supported_extensions().khr_dynamic_rendering
-            })
-            .filter(|p| p.supported_extensions().contains(&device_extensions))
-            .filter_map(|p| {
-                p.queue_family_properties()
-                    .iter()
-                    .enumerate()
-                    .position(|(i, q)| {
-                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.surface_support(i as u32, &surface).unwrap_or(false)
-                    })
-                    .map(|i| (p, i as u32))
-            })
-            .min_by_key(|(p, _)| {
-                // We assign a lower score to device types that are likely to be faster/better.
-                match p.properties().device_type {
-                    PhysicalDeviceType::DiscreteGpu => 0,
-                    PhysicalDeviceType::IntegratedGpu => 1,
-                    PhysicalDeviceType::VirtualGpu => 2,
-                    PhysicalDeviceType::Cpu => 3,
-                    PhysicalDeviceType::Other => 4,
-                    _ => 5,
-                }
-            })
-            .context("Getting Physical Device and Queue")?;
+        let (physical_device, queue_family_index) =
+            select_physical_device(&instance, &surface, &device_extensions)?;
 
         info!(
             "Using Device {}, type: {:?}",
@@ -206,7 +231,7 @@ impl Renderer {
             },
         ];
 
-        let mesh = MeshBuilder::new()
+        let mesh = MeshBuilder::default()
             .with_vertices(vertices)
             .build(memory_allocator.clone())
             .context("building mesh")?;
@@ -223,7 +248,7 @@ impl Renderer {
             },
         ];
 
-        let mesh2 = MeshBuilder::new()
+        let mesh2 = MeshBuilder::default()
             .with_vertices(vertices2)
             .build(memory_allocator.clone())
             .context("building mesh2")?;
@@ -248,6 +273,7 @@ impl Renderer {
             max_frame_time: 0.166667,
             accumulated_time: 0.0,
             fixed_time_step: 1.0 / 240.0,
+            _callback: callback,
         })
     }
 
@@ -275,7 +301,7 @@ impl Renderer {
         }
 
         let blending_factor = self.accumulated_time / self.fixed_time_step;
-        let current_state = self.blend_state(blending_factor);
+        self.blend_state(blending_factor);
 
         let r = self.draw_frame();
 
@@ -286,7 +312,7 @@ impl Renderer {
 
     pub fn update_game(&self) {}
 
-    pub fn blend_state(&self, blending_factor: f64) {}
+    pub fn blend_state(&self, _blending_factor: f64) {}
 
     pub fn draw_frame(&mut self) -> anyhow::Result<()> {
         let image_extent: [u32; 2] = self.window_size.into();
@@ -327,7 +353,7 @@ impl Renderer {
         }
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.command_buffer_allocator.clone(),
+            &self.command_buffer_allocator,
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

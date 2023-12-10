@@ -3,21 +3,17 @@ use std::sync::Arc;
 use anyhow::Context;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
 };
 
 use crate::shaders::Position;
 
+#[derive(Default)]
 pub struct MeshBuilder {
     vertices: Option<Vec<Position>>,
 }
 
 impl MeshBuilder {
-    pub fn new() -> Self {
-        MeshBuilder { vertices: None }
-    }
-
     pub fn with_vertices(mut self, value: Vec<Position>) -> Self {
         self.vertices = Some(value);
         self
