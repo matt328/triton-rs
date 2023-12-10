@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use anyhow::Context;
 use log::info;
@@ -39,6 +39,10 @@ pub struct Renderer {
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Subbuffer<[Position]>,
     device: Arc<Device>,
+    previous_instant: Instant,
+    max_frame_time: f64,
+    accumulated_time: f64,
+    fixed_time_step: f64,
 }
 
 impl Renderer {
@@ -227,6 +231,10 @@ impl Renderer {
             pipeline,
             vertex_buffer,
             device,
+            previous_instant: Instant::now(),
+            max_frame_time: 0.166667,
+            accumulated_time: 0.0,
+            fixed_time_step: 1.0 / 240.0,
         })
     }
 
@@ -236,6 +244,38 @@ impl Renderer {
     }
 
     pub fn update(&mut self) -> anyhow::Result<()> {
+        let current_instant = Instant::now();
+
+        let mut elapsed = current_instant
+            .duration_since(self.previous_instant)
+            .as_secs_f64();
+
+        if elapsed > self.max_frame_time {
+            elapsed = self.max_frame_time;
+        }
+        self.accumulated_time += elapsed;
+
+        // Keep updating as much as we can between render ticks
+        while self.accumulated_time >= self.fixed_time_step {
+            self.update_game();
+            self.accumulated_time -= self.fixed_time_step;
+        }
+
+        let blending_factor = self.accumulated_time / self.fixed_time_step;
+        let current_state = self.blend_state(blending_factor);
+
+        let r = self.draw_frame();
+
+        self.previous_instant = current_instant;
+
+        r
+    }
+
+    pub fn update_game(&self) {}
+
+    pub fn blend_state(&self, blending_factor: f64) {}
+
+    pub fn draw_frame(&mut self) -> anyhow::Result<()> {
         let image_extent: [u32; 2] = self.window_size.into();
         if image_extent.contains(&0) {
             return Ok(());
