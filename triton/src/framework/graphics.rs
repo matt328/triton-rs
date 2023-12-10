@@ -1,6 +1,11 @@
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Result};
+use vulkano::image::ImageCreateInfo;
+use vulkano::image::ImageType;
+use vulkano::image::ImageUsage;
+use vulkano::memory::allocator::AllocationCreateInfo;
 use std::sync::Arc;
 use vulkano::image::view::ImageView;
+use vulkano::image::Image;
 use vulkano::pipeline::graphics::color_blend::ColorBlendState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
@@ -12,9 +17,7 @@ use vulkano::VulkanError;
 
 use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::rasterization::PolygonMode;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
-use vulkano::pipeline::graphics::vertex_input::Vertex;
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::graphics::viewport::ViewportState;
 use vulkano::render_pass::FramebufferCreateInfo;
@@ -33,8 +36,6 @@ use vulkano::{
 
 use crate::framework::shaders::{fs, vs, Effect};
 
-use super::shaders::Vertex2;
-
 pub struct GraphicsContext {}
 
 impl GraphicsContext {
@@ -42,25 +43,26 @@ impl GraphicsContext {
         context: &VulkanoContext,
         renderer: &VulkanoWindowRenderer,
     ) -> anyhow::Result<GraphicsContext> {
-        let render_pass = vulkano::single_pass_renderpass!(context.device().clone(),
+        let render_pass = vulkano::single_pass_renderpass!(
+            context.device().clone(),
             attachments: {
                 color: {
-                    load: Clear,
-                    store: Store,
                     format: renderer.swapchain_format(),
                     samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
                 },
-                depth: {
-                    load: Clear,
-                    store: DontCare,
+                depth_stencil: {
                     format: Format::D16_UNORM,
                     samples: 1,
-                }
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
             },
             pass: {
                 color: [color],
-                depth_stencil: {depth}
-            }
+                depth_stencil: {depth_stencil},
+            },
         )
         .context("Creating render pass")?;
 
@@ -88,21 +90,29 @@ impl GraphicsContext {
     fn window_size_dependent_setup(
         memory_allocator: &StandardMemoryAllocator,
         default_effect: &Effect,
-        images: &[Arc<SwapchainImage>],
+        images: &[Arc<Image>],
         render_pass: Arc<RenderPass>,
     ) -> (
         anyhow::Result<Arc<GraphicsPipeline>>,
-        anyhow::Result<Vec<Arc<Framebuffer>>, FramebufferCreationError>,
+        anyhow::Result<Vec<Arc<Framebuffer>>, Validated<VulkanError>>,
     ) {
-        let dimensions = images[0].dimensions().width_height();
-
         let depth_buffer = ImageView::new_default(
-            AttachmentImage::transient(memory_allocator, dimensions, Format::D16_UNORM).unwrap(),
+            Image::new(
+                memory_allocator,
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::D16_UNORM,
+                    extent: images[0].extent(),
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            ).unwrap()
         )
         .unwrap();
 
         // Create a Framebuffer for each image
-        let framebuffers: Result<Vec<Arc<Framebuffer>>, FramebufferCreationError> = images
+        let framebuffers: Result<Vec<Arc<Framebuffer>>, Validated<VulkanError> = images
             .iter()
             .map(|image| {
                 let view = ImageView::new_default(image.clone()).unwrap();
@@ -134,7 +144,6 @@ impl GraphicsContext {
         render_pass: Arc<RenderPass>,
     ) -> Result<Arc<GraphicsPipeline>, Validated<VulkanError>> {
         let pipeline = {
-            let device = memory_allocator.device();
             let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
                 .definition(
                     &effect
