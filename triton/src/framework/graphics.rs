@@ -11,8 +11,8 @@ use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::graphics::viewport::ViewportState;
 use vulkano::render_pass::FramebufferCreateInfo;
 use vulkano::render_pass::Subpass;
+use vulkano_util::context::VulkanoContext;
 
-use log::info;
 use vulkano::format::Format;
 use vulkano::image::ImageAccess;
 use vulkano::image::SwapchainImage;
@@ -20,13 +20,8 @@ use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferCreationError, RenderPass};
 use vulkano::sync::GpuFuture;
 use vulkano::{
-    device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned, Features, Queue, QueueCreateInfo,
-        QueueFlags,
-    },
+    device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
     image::ImageUsage,
-    instance::Instance,
     memory::allocator::StandardMemoryAllocator,
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     sync,
@@ -46,69 +41,16 @@ pub struct GraphicsContext {
 }
 
 impl GraphicsContext {
-    pub fn new(instance: Arc<Instance>, surface: Arc<Surface>) -> anyhow::Result<GraphicsContext> {
-        let features = Features {
-            tessellation_shader: true,
-            fill_mode_non_solid: true,
-            ..Default::default()
-        };
-
-        let device_extensions = DeviceExtensions {
-            khr_swapchain: true,
-            ..DeviceExtensions::empty()
-        };
-        let (physical_device, queue_family_index) = instance
-            .enumerate_physical_devices()
-            .unwrap()
-            .filter(|p| p.supported_extensions().contains(&device_extensions))
-            .filter(|p| p.supported_features().contains(&features))
-            .filter_map(|p| {
-                p.queue_family_properties()
-                    .iter()
-                    .enumerate()
-                    .position(|(i, q)| {
-                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.surface_support(i as u32, &surface).unwrap_or(false)
-                    })
-                    .map(|i| (p, i as u32))
-            })
-            .min_by_key(|(p, _)| match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 3,
-                PhysicalDeviceType::Other => 4,
-                _ => 5,
-            })
-            .unwrap();
-
-        info!(
-            "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
-        );
-
-        let (device, mut queues) = Device::new(
-            physical_device.clone(),
-            DeviceCreateInfo {
-                queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index,
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-        )
-        .context("Failed to create device")?;
-
-        let queue = queues.next().context("No suitable queues were found")?;
-
+    pub fn new(context: &VulkanoContext, surface: Arc<Surface>) -> anyhow::Result<GraphicsContext> {
         let (mut swapchain, images) = {
-            let surface_capabilities = device
+            let surface_capabilities = context
+                .device()
                 .physical_device()
                 .surface_capabilities(&surface, Default::default())
                 .unwrap();
             let image_format = Some(
-                device
+                context
+                    .device()
                     .physical_device()
                     .surface_formats(&surface, Default::default())
                     .unwrap()[0]
@@ -117,7 +59,7 @@ impl GraphicsContext {
 
             let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
             Swapchain::new(
-                device.clone(),
+                context.device().clone(),
                 surface.clone(),
                 SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count,
@@ -135,11 +77,11 @@ impl GraphicsContext {
             .context("Creating Swapchain")?
         };
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = StandardMemoryAllocator::new_default(context.device().clone());
 
-        let frame_future = Some(sync::now(device.clone()).boxed());
+        let frame_future = Some(sync::now(context.device().clone()).boxed());
 
-        let render_pass = vulkano::single_pass_renderpass!(device.clone(),
+        let render_pass = vulkano::single_pass_renderpass!(context.device().clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -161,8 +103,8 @@ impl GraphicsContext {
         )
         .context("Creating render pass")?;
 
-        let vs = vs::load(device.clone()).context("Loading Vertex Shader")?;
-        let fs = fs::load(device.clone()).context("Loading Pixel Shader")?;
+        let vs = vs::load(context.device().clone()).context("Loading Vertex Shader")?;
+        let fs = fs::load(context.device().clone()).context("Loading Pixel Shader")?;
 
         let default_effect = Effect::builder(vs, fs).build();
 

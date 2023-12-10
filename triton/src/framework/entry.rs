@@ -1,33 +1,26 @@
+use super::graphics::GraphicsContext;
 use anyhow::Context;
 use log::info;
-use std::{error::Error, sync::Arc, time::Instant, thread::current};
-use vulkano::{
-    instance::{Instance, InstanceCreateInfo},
-    swapchain::Surface,
-    VulkanLibrary,
-};
+use std::{sync::Arc, time::Instant};
+use vulkano::swapchain::Surface;
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
-    renderer::VulkanoWindowRenderer,
     window::VulkanoWindows,
 };
-use vulkano_win::create_surface_from_winit;
+
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::{self, EventLoop, ControlFlow},
-    window::WindowBuilder,
+    event_loop::{ControlFlow, EventLoop},
 };
-use std::ops::Sub;
-use super::graphics::GraphicsContext;
 
 pub struct Game {
     graphics_context: GraphicsContext,
 }
 
 impl Game {
-    pub fn new(instance: Arc<Instance>, surface: Arc<Surface>) -> anyhow::Result<Game> {
+    pub fn new(context: &VulkanoContext, surface: Arc<Surface>) -> anyhow::Result<Game> {
         Ok(Game {
-            graphics_context: GraphicsContext::new(instance.clone(), surface.clone())
+            graphics_context: GraphicsContext::new(context, surface.clone())
                 .context("Game creating graphics context")?,
         })
     }
@@ -83,21 +76,14 @@ impl Application {
         let _id1 =
             vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
         let renderer = vulkano_windows.get_primary_renderer();
+        let s = renderer.unwrap().surface();
 
-        let game =
-            Arc::new(Game::new(context.instance().clone(), renderer.unwrap().surface.clone()).context("Failed to create Game")?);
+        let game = Arc::new(Game::new(&context, s.clone()).context("Failed to create Game")?);
 
-        let current_instant = Instant::now();
-        let previous_instant = Instant::now();
+        let mut previous_instant = Instant::now();
         let max_frame_time: f64 = 0.0;
-        let last_frame_time: f64 = 0.0;
-        let running_time: f64 = 0.0;
-        let accumulated_time: f64 = 0.0;
+        let mut accumulated_time: f64 = 0.0;
         let fixed_time_step: f64 = 1.0 / 240.0;
-        let number_of_updates = 0;
-        let number_of_renders = 0;
-        let blending_factor = 0.0;
-        let exit_next_iteration = false;
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -108,30 +94,30 @@ impl Application {
 
             match event {
                 Event::RedrawRequested(_) => {
-                    current_instant = Instant::now();
-                    let mut elapsed = current_instant.sub(previous_instant);
+                    let current_instant = Instant::now();
+                    let mut elapsed = current_instant
+                        .duration_since(previous_instant)
+                        .as_secs_f64();
                     if elapsed > max_frame_time {
                         elapsed = max_frame_time;
                     }
-                    last_frame_time = elapsed;
-                    running_time += elapsed;
                     accumulated_time += elapsed;
 
                     while accumulated_time >= fixed_time_step {
                         game.update();
                         accumulated_time -= fixed_time_step;
-                        number_of_updates += 1;
                     }
 
-                    blending_factor = accumulated_time / fixed_time_step;
+                    let blending_factor = accumulated_time / fixed_time_step;
                     game.render(blending_factor);
 
-                    number_of_renders += 1;
                     previous_instant = current_instant;
-                    return true;
                 }
                 Event::MainEventsCleared => {
-                    vulkano_windows.get_primary_window().unwrap().request_redraw();
+                    vulkano_windows
+                        .get_primary_window()
+                        .unwrap()
+                        .request_redraw();
                 }
                 _ => {}
             }
