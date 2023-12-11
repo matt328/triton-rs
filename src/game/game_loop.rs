@@ -8,15 +8,12 @@ use winit::{dpi::PhysicalSize, window::Window};
 #[cfg(feature = "tracing")]
 use tracing_tracy::client::frame_mark;
 
-use crate::{game::state::blend_state, graphics::Renderer};
-
-use super::state::{next_state, State};
+use crate::game::context::Context;
 
 pub struct GameLoop {
     previous_instant: Instant,
     accumulated_time: f32,
-    renderer: Renderer,
-    state: State,
+    context: Context,
 }
 
 const FPS: f32 = 60.0;
@@ -31,20 +28,19 @@ impl GameLoop {
         required_extensions: InstanceExtensions,
         window: Arc<Window>,
     ) -> anyhow::Result<Self> {
-        let renderer = Renderer::new(required_extensions, window.clone())?;
+        let context = Context::new(required_extensions, window.clone())?;
 
         info!("Initialized Game");
 
         Ok(GameLoop {
             previous_instant: Instant::now(),
             accumulated_time: 0.0,
-            renderer,
-            state: State::default(),
+            context,
         })
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        self.renderer.window_resized(new_size);
+        self.context.window_resized(new_size);
     }
 
     /// Implements fixed timestep game loop https://gafferongames.com/post/fix_your_timestep/
@@ -68,11 +64,10 @@ impl GameLoop {
 
         let update_loop = span!(Level::INFO, "update loop").entered();
 
-        let mut previous_state = self.state;
+        self.context.pre_update();
 
         while self.accumulated_time >= FIXED_TIME_STEP {
-            previous_state = self.state;
-            self.state = next_state(&self.state);
+            self.context.update();
             self.accumulated_time -= FIXED_TIME_STEP;
         }
 
@@ -82,9 +77,9 @@ impl GameLoop {
 
         event!(Level::INFO, blending_factor);
 
-        self.state = blend_state(&previous_state, &self.state, blending_factor);
+        self.context.post_update(blending_factor);
 
-        let _rendered = self.render_game();
+        self.context.render()?;
 
         #[cfg(feature = "tracing")]
         frame_mark();
@@ -92,12 +87,5 @@ impl GameLoop {
         self.previous_instant = current_instant;
 
         Ok(())
-    }
-
-    pub fn render_game(&mut self) -> anyhow::Result<()> {
-        let _span = span!(Level::INFO, "render_game").entered();
-        let f = format!("{:?}", self.state);
-        event!(Level::INFO, f);
-        self.renderer.draw(self.state)
     }
 }

@@ -81,11 +81,15 @@ pub struct Renderer {
     uniform_buffer_sets: Vec<Arc<PersistentDescriptorSet>>,
 
     mesh: BasicMesh,
-    camera: Box<dyn Camera>,
+    camera: Arc<Box<dyn Camera>>,
 }
 
 impl Renderer {
-    pub fn new(extensions: InstanceExtensions, window: Arc<Window>) -> anyhow::Result<Self> {
+    pub fn new(
+        extensions: InstanceExtensions,
+        window: Arc<Window>,
+        camera: Arc<Box<dyn Camera>>,
+    ) -> anyhow::Result<Self> {
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
 
         let create_info = InstanceCreateInfo {
@@ -244,8 +248,6 @@ impl Renderer {
             &mesh.index_buffer,
             &uniform_buffer_sets,
         )?;
-        let aspect = &viewport.extent[0] / &viewport.extent[1];
-        let camera: Box<dyn Camera> = Box::new(DefaultCamera::new_with_aspect(aspect));
 
         Ok(Renderer {
             device,
