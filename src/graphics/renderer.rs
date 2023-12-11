@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use cgmath::{perspective, Deg, Matrix4, Point3, Rad, SquareMatrix, Vector3};
+use cgmath::{perspective, Deg, Matrix4, Point3, Vector3};
 use log::info;
 
 #[cfg(target_os = "macos")]
@@ -65,7 +65,6 @@ pub struct Renderer {
 
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     queue: Arc<Queue>,
 
     render_pass: Arc<RenderPass>,
@@ -133,7 +132,11 @@ impl Renderer {
                 .context("getting surface capabilities")?;
 
             let dimensions = window.inner_size();
-            let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
+            let composite_alpha = caps
+                .supported_composite_alpha
+                .into_iter()
+                .next()
+                .context("getting supported composite alpha")?;
             let image_format = physical_device
                 .surface_formats(&surface, Default::default())
                 .context("getting surface formats")?[0]
@@ -189,14 +192,12 @@ impl Renderer {
             Default::default(),
         ));
 
-        // TODO: figure out depth issues.
-
-        let layout = pipeline.layout().set_layouts().get(0).unwrap();
-
         let command_buffer_allocator =
             StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
         let frames_in_flight = images.len();
+
+        type BuffersType = Subbuffer<shaders::vs_position_color::FrameData>;
 
         let uniform_buffers = (0..swapchain.image_count())
             .map(|_| {
@@ -212,9 +213,9 @@ impl Renderer {
                         ..Default::default()
                     },
                 )
-                .unwrap()
+                .context("")
             })
-            .collect::<Vec<_>>();
+            .collect::<anyhow::Result<Vec<BuffersType>>>()?;
 
         let uniform_buffer_sets = uniform_buffers
             .iter()
@@ -225,9 +226,9 @@ impl Renderer {
                     [WriteDescriptorSet::buffer(0, buffer.clone())],
                     [],
                 )
-                .unwrap()
+                .context("Creating Descriptor Set")
             })
-            .collect::<Vec<_>>();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         let command_buffers = helpers::get_command_buffers(
             &command_buffer_allocator,
@@ -256,7 +257,6 @@ impl Renderer {
             need_swapchain_recreation: true,
             fences: vec![None; frames_in_flight],
             previous_fence_i: 0,
-            descriptor_set_allocator,
             uniform_buffers,
             uniform_buffer_sets,
         })
@@ -367,12 +367,11 @@ impl Renderer {
         let model: Matrix4<f32> = Matrix4::from_axis_angle(axis, angle);
 
         // Update Per Frame buffers here
-        *self.uniform_buffers[image_i as usize].write().unwrap() =
-            shaders::vs_position_color::FrameData {
-                model: model.into(),
-                view: view.into(),
-                proj: projection.into(),
-            };
+        *self.uniform_buffers[image_i as usize].write()? = shaders::vs_position_color::FrameData {
+            model: model.into(),
+            view: view.into(),
+            proj: projection.into(),
+        };
 
         let future = previous_future
             .join(acquire_future)
@@ -388,6 +387,7 @@ impl Renderer {
             .then_signal_fence_and_flush();
 
         self.fences[image_i as usize] = match future.map_err(Validated::unwrap) {
+            #[allow(clippy::arc_with_non_send_sync)]
             Ok(value) => Some(Arc::new(value)),
             Err(VulkanError::OutOfDate) => {
                 self.need_swapchain_recreation = true;

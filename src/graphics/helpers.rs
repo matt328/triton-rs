@@ -22,7 +22,7 @@ use vulkano::{
             depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
-            rasterization::{FrontFace, RasterizationState},
+            rasterization::RasterizationState,
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
@@ -102,23 +102,18 @@ pub fn get_framebuffers(
     images
         .iter()
         .map(|image| {
-            let depth_buffer = ImageView::new_default(
-                Image::new(
-                    memory_allocator.clone(),
-                    ImageCreateInfo {
-                        image_type: ImageType::Dim2d,
-                        format: Format::D16_UNORM,
-                        extent: images[0].extent(),
-                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
-                            | ImageUsage::TRANSIENT_ATTACHMENT,
-                        ..Default::default()
-                    },
-                    AllocationCreateInfo::default(),
-                )
-                .unwrap(),
-            )
-            .unwrap();
-            let view = ImageView::new_default(image.clone()).unwrap();
+            let depth_buffer = ImageView::new_default(Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::D16_UNORM,
+                    extent: images[0].extent(),
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )?)?;
+            let view = ImageView::new_default(image.clone())?;
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {
@@ -128,7 +123,7 @@ pub fn get_framebuffers(
             )
             .context("Creating Framebuffer")
         })
-        .collect()
+        .collect::<anyhow::Result<Vec<Arc<Framebuffer>>>>()
 }
 
 pub fn get_pipeline(
@@ -157,7 +152,8 @@ pub fn get_pipeline(
             .context("creating pipeline layout info")?,
     )?;
 
-    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+    let subpass =
+        Subpass::from(render_pass.clone(), 0).context("getting subpass from renderpass")?;
 
     GraphicsPipeline::new(
         device.clone(),
@@ -194,7 +190,7 @@ pub fn get_command_buffers(
     framebuffers: &[Arc<Framebuffer>],
     vertex_buffer: &Subbuffer<[VertexPositionColor]>,
     index_buffer: &Subbuffer<[u16]>,
-    uniform_buffer_sets: &Vec<Arc<PersistentDescriptorSet>>,
+    uniform_buffer_sets: &[Arc<PersistentDescriptorSet>],
 ) -> anyhow::Result<Vec<Arc<PrimaryAutoCommandBuffer>>> {
     let mut results: Vec<Arc<PrimaryAutoCommandBuffer>> = vec![];
 

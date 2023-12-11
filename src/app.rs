@@ -18,7 +18,7 @@ pub struct App {
 
 impl App {
     pub fn new() -> anyhow::Result<Self> {
-        let event_loop = EventLoop::new().unwrap();
+        let event_loop = EventLoop::new().context("Creating event loop")?;
         let required_extensions = Surface::required_extensions(&event_loop);
 
         let window = Arc::new(
