@@ -6,6 +6,16 @@ use tracing::{span, Level};
 use tracing_subscriber::layer::SubscriberExt;
 use triton::app::App;
 
+/*
+    TODO:
+    create a GameContext struct that owns and ties game stuff together with the renderer
+    for now GameContext should own a first person camera that it will activate() within the
+    renderer so that the renderer can get the view and projection matrices.
+
+    After that, look into an ecs for rust, and move the cube and its rotating behavior into
+    that somehow.
+*/
+
 fn main() -> anyhow::Result<()> {
     log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
 

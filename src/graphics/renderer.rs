@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use cgmath::{perspective, Deg, Matrix4, Point3, Vector3};
+use cgmath::{Deg, Matrix4, Vector3};
 use log::info;
 
 #[cfg(target_os = "macos")]
@@ -38,19 +38,23 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     game::State,
-    graphics::shaders::{CUBE_INDICES, CUBE_VERTICES},
+    graphics::{
+        camera::DefaultCamera,
+        shaders::{CUBE_INDICES, CUBE_VERTICES},
+    },
 };
 
 use super::{
     helpers,
     mesh::{BasicMesh, MeshBuilder},
-    shaders,
+    shaders, Camera,
 };
 type MyJoinFuture = JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>;
 type MyCommandBufferFuture = CommandBufferExecFuture<MyJoinFuture>;
 type MyPresentFuture = PresentFuture<MyCommandBufferFuture>;
 type MyFenceSignalFuture = FenceSignalFuture<MyPresentFuture>;
 type FenceSignalFuturesList = Vec<Option<Arc<MyFenceSignalFuture>>>;
+
 pub struct Renderer {
     device: Arc<Device>,
     swapchain: Arc<Swapchain>,
@@ -77,6 +81,7 @@ pub struct Renderer {
     uniform_buffer_sets: Vec<Arc<PersistentDescriptorSet>>,
 
     mesh: BasicMesh,
+    camera: Box<dyn Camera>,
 }
 
 impl Renderer {
@@ -239,6 +244,8 @@ impl Renderer {
             &mesh.index_buffer,
             &uniform_buffer_sets,
         )?;
+        let aspect = &viewport.extent[0] / &viewport.extent[1];
+        let camera: Box<dyn Camera> = Box::new(DefaultCamera::new_with_aspect(aspect));
 
         Ok(Renderer {
             device,
@@ -259,6 +266,7 @@ impl Renderer {
             previous_fence_i: 0,
             uniform_buffers,
             uniform_buffer_sets,
+            camera,
         })
     }
 
@@ -343,18 +351,7 @@ impl Renderer {
             Some(fence) => fence.boxed(),
         };
 
-        // Move this to a 'camera' struct
-        let fov: Deg<f32> = Deg(60.0);
-        let aspect_ratio: f32 = self.viewport.extent[0] / self.viewport.extent[1];
-        let near: f32 = 0.1;
-        let far: f32 = 100.0;
-        let projection = perspective(fov, aspect_ratio, near, far);
-
-        let eye = Point3::new(3.0, 0.0, -4.0);
-
-        let center = Point3::new(0.0, 0.0, 0.0);
-        let up = Vector3::new(0.0, 1.0, 0.0);
-        let view = Matrix4::look_at_rh(eye, center, up);
+        let (projection, view) = self.camera.calculate_matrices();
 
         /* Move this into an entity
         Also split FrameData into separate FrameData and EntityData uniform buffers
