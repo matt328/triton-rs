@@ -11,6 +11,7 @@ anyhow = "1.0.70"
 cgmath = "0.18"
 log = "0.4.17"
 log4rs = "1.2.0"
+specs = { version = "0.20.0", features = ["specs-derive"] }
 tracing = "0.1.40"
 tracy-client = "0.16.4"
 tracing-tracy = "0.10.4"
