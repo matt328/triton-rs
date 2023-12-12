@@ -1,9 +1,8 @@
 use anyhow::Context;
+use log::info;
 #[cfg(feature = "tracing")]
 use log::info;
-use specs::{
-    Builder, DispatcherBuilder, ReadStorage, RunNow, System, World, WorldExt, WriteStorage,
-};
+use specs::{Builder, DispatcherBuilder, Read, ReadStorage, System, World, WorldExt, WriteStorage};
 use tracing::{span, Level};
 #[cfg(feature = "tracing")]
 use tracing_subscriber::layer::SubscriberExt;
@@ -25,13 +24,14 @@ use triton::{
 struct HelloWorld;
 
 impl<'a> System<'a> for HelloWorld {
-    type SystemData = ReadStorage<'a, Position>;
+    type SystemData = (Read<'a, Phase>, ReadStorage<'a, Position>);
 
-    fn run(&mut self, position: Self::SystemData) {
+    fn run(&mut self, data: Self::SystemData) {
         use specs::Join;
+        let (phase, position) = data;
 
         for position in position.join() {
-            println!("Hello, {:?}", &position);
+            info!("Hello, {:?} - {:?}", phase.0, &position);
         }
     }
 }
@@ -49,6 +49,22 @@ impl<'a> System<'a> for UpdatePos {
         }
     }
 }
+
+#[derive(Debug)]
+enum UpdatePhase {
+    PreUpdate,
+    Update,
+    PostUpate,
+}
+
+impl Default for UpdatePhase {
+    fn default() -> Self {
+        UpdatePhase::Update
+    }
+}
+
+#[derive(Default)]
+struct Phase(UpdatePhase);
 
 fn main() -> anyhow::Result<()> {
     log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
@@ -70,8 +86,14 @@ fn main() -> anyhow::Result<()> {
     let _root = span!(Level::INFO, "root").entered();
 
     let mut world = World::new();
-    world.register::<Position>();
-    world.register::<Velocity>();
+
+    let mut dispatcher = DispatcherBuilder::new()
+        .with(HelloWorld, "hello_world", &[])
+        .with(UpdatePos, "update_pos", &["hello_world"])
+        .with(HelloWorld, "hello_updated", &["update_pos"])
+        .build();
+
+    dispatcher.setup(&mut world);
 
     world
         .create_entity()
@@ -92,13 +114,21 @@ fn main() -> anyhow::Result<()> {
         .with(Velocity { x: 0.1, y: 0.1 })
         .build();
 
-    let mut dispatcher = DispatcherBuilder::new()
-        .with(HelloWorld, "hello_world", &[])
-        .with(UpdatePos, "update_pos", &["hello_world"])
-        .with(HelloWorld, "hello_updated", &["update_pos"])
-        .build();
+    world.insert(Phase(UpdatePhase::PreUpdate));
 
     dispatcher.dispatch(&mut world);
+
+    *world.write_resource::<Phase>() = Phase(UpdatePhase::Update);
+
+    dispatcher.dispatch(&mut world);
+
+    {
+        let mut phase = world.write_resource::<Phase>();
+        *phase = Phase(UpdatePhase::PostUpate);
+    }
+
+    dispatcher.dispatch(&mut world);
+
     world.maintain();
 
     Ok(())
