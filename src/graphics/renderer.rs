@@ -38,10 +38,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     game::State,
-    graphics::{
-        camera::DefaultCamera,
-        shaders::{CUBE_INDICES, CUBE_VERTICES},
-    },
+    graphics::shaders::{CUBE_INDICES, CUBE_VERTICES},
 };
 
 use super::{
