@@ -1,4 +1,5 @@
 use anyhow::Context;
+use cgmath::{Quaternion, Vector3, Zero};
 use log::info;
 #[cfg(feature = "tracing")]
 use log::info;
@@ -8,18 +9,8 @@ use tracing::{span, Level};
 use tracing_subscriber::layer::SubscriberExt;
 use triton::{
     app::App,
-    game::{Position, Velocity},
+    game::{Position, Transform, TransformSystem, Velocity},
 };
-
-/*
-    TODO:
-    create a GameContext struct that owns and ties game stuff together with the renderer
-    for now GameContext should own a first person camera that it will activate() within the
-    renderer so that the renderer can get the view and projection matrices.
-
-    After that, look into an ecs for rust, and move the cube and its rotating behavior into
-    that somehow.
-*/
 
 struct HelloWorld;
 
@@ -94,6 +85,21 @@ fn main() -> anyhow::Result<()> {
         .build();
 
     dispatcher.setup(&mut world);
+
+    let mut fixed_update_dispatcher = DispatcherBuilder::new()
+        .with(TransformSystem, "transform_system", &[])
+        .build();
+
+    fixed_update_dispatcher.setup(&mut world);
+
+    world
+        .create_entity()
+        .with(Transform {
+            position: Vector3::zero(),
+            rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
+            scale: Vector3::new(1.0, 1.0, 1.0),
+        })
+        .build();
 
     world
         .create_entity()

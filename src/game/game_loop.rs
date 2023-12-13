@@ -10,10 +10,10 @@ use tracing_tracy::client::frame_mark;
 
 use crate::game::context::Context;
 
-pub struct GameLoop {
+pub struct GameLoop<'a, 'b> {
     previous_instant: Instant,
     accumulated_time: f32,
-    context: Context,
+    context: Context<'a, 'b>,
 }
 
 const FPS: f32 = 60.0;
@@ -23,7 +23,7 @@ const UPS: f32 = 240.0;
 const MAX_FRAME_TIME: f32 = 1.0 / FPS;
 const FIXED_TIME_STEP: f32 = 1.0 / UPS;
 
-impl GameLoop {
+impl<'a, 'b> GameLoop<'a, 'b> {
     pub fn new(
         required_extensions: InstanceExtensions,
         window: Arc<Window>,

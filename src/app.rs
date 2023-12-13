@@ -10,13 +10,13 @@ use winit::{
 
 use crate::game::GameLoop;
 
-pub struct App {
+pub struct App<'a, 'b> {
     event_loop: EventLoop<()>,
-    game: GameLoop,
+    game: GameLoop<'a, 'b>,
     window: Arc<Window>,
 }
 
-impl App {
+impl<'a, 'b> App<'a, 'b> {
     pub fn new() -> anyhow::Result<Self> {
         let event_loop = EventLoop::new().context("Creating event loop")?;
         let required_extensions = Surface::required_extensions(&event_loop);

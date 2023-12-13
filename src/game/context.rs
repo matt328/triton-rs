@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use cgmath::{Quaternion, Vector3, Zero};
+use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use vulkano::instance::InstanceExtensions;
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -8,17 +10,19 @@ use crate::graphics::{Camera, Renderer};
 use super::{
     camera::MouseLookCamera,
     state::{blend_state, next_state},
-    State,
+    State, Transform, TransformSystem,
 };
 
-pub struct Context {
+pub struct Context<'a, 'b> {
     renderer: Renderer,
     camera: Arc<Box<dyn Camera>>,
+    world: World,
     state: State,
     previous_state: State,
+    fixed_update_dispatcher: Dispatcher<'a, 'b>,
 }
 
-impl Context {
+impl<'a, 'b> Context<'a, 'b> {
     pub fn new(
         required_extensions: InstanceExtensions,
         window: Arc<Window>,
@@ -32,11 +36,28 @@ impl Context {
         let renderer = Renderer::new(required_extensions, window.clone(), camera.clone())?;
         let state = State::default();
 
+        let mut world = World::new();
+
+        world
+            .create_entity()
+            .with(Transform {
+                position: Vector3::zero(),
+                rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
+                scale: Vector3::new(1.0, 1.0, 1.0),
+            })
+            .build();
+
+        let mut fixed_update_dispatcher = DispatcherBuilder::new().build();
+
+        fixed_update_dispatcher.setup(&mut world);
+
         Ok(Context {
             camera,
             renderer,
             state,
             previous_state: State::default(),
+            world,
+            fixed_update_dispatcher,
         })
     }
 
