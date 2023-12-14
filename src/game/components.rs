@@ -1,11 +1,15 @@
-use std::sync::Arc;
-
 use cgmath::{Deg, Quaternion, Rotation3, Vector3};
-use log::{debug, info};
+
 use specs::{Component, Read, ReadStorage, System, VecStorage, Write, WriteStorage};
 use winit::dpi::PhysicalSize;
 
 use crate::graphics::Renderer;
+
+#[derive(Component, Debug)]
+#[storage(VecStorage)]
+pub struct Renderable {
+    pub mesh_id: usize,
+}
 
 #[derive(Component, Debug)]
 #[storage(VecStorage)]
@@ -36,22 +40,23 @@ impl<'a> System<'a> for RenderSystem {
         Read<'a, BlendFactor>,
         Write<'a, ResizeEvents>,
         ReadStorage<'a, Transform>,
+        ReadStorage<'a, Renderable>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (blending_factor, mut resize_events, transforms) = data;
+        let (blending_factor, mut resize_events, transforms, meshes) = data;
 
         if resize_events.0.len() > 0 {
             self.renderer.window_resized(resize_events.0[0]);
             resize_events.0.clear();
         }
         use specs::Join;
-        for transform in transforms.join() {
-            // debug!(
-            //     "Rendering with blending factor: {}, transform: {:?}",
-            //     blending_factor.0, transform
-            // );
+        for (transform, mesh) in (&transforms, &meshes).join() {
+            // Apply blending_factor to Transforms before passing
+            // them to renderer
+            self.renderer.enqueue_mesh(mesh.mesh_id, transform);
         }
+        self.renderer.draw();
     }
 }
 

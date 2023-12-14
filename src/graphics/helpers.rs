@@ -2,15 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use vulkano::{
-    buffer::Subbuffer,
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryAutoCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
-    },
-    descriptor_set::PersistentDescriptorSet,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceExtensions, Queue, QueueFlags,
+        Device, DeviceExtensions, QueueFlags,
     },
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
@@ -28,7 +22,7 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, Pipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::ShaderModule,
@@ -181,49 +175,4 @@ pub fn get_pipeline(
         },
     )
     .context("Creating Pipeline")
-}
-
-pub fn get_command_buffers(
-    command_buffer_allocator: &StandardCommandBufferAllocator,
-    queue: &Arc<Queue>,
-    pipeline: &Arc<GraphicsPipeline>,
-    framebuffers: &[Arc<Framebuffer>],
-    vertex_buffer: &Subbuffer<[VertexPositionColor]>,
-    index_buffer: &Subbuffer<[u16]>,
-    uniform_buffer_sets: &[Arc<PersistentDescriptorSet>],
-) -> anyhow::Result<Vec<Arc<PrimaryAutoCommandBuffer>>> {
-    let mut results: Vec<Arc<PrimaryAutoCommandBuffer>> = vec![];
-
-    for (i, framebuffer) in framebuffers.iter().enumerate() {
-        let mut builder = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator,
-            queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-        )?;
-        builder
-            .begin_render_pass(
-                RenderPassBeginInfo {
-                    clear_values: vec![Some([0.392, 0.494, 0.929, 1.0].into()), Some(1f32.into())],
-                    ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
-                },
-                SubpassBeginInfo {
-                    contents: SubpassContents::Inline,
-                    ..Default::default()
-                },
-            )?
-            .bind_pipeline_graphics(pipeline.clone())?
-            .bind_descriptor_sets(
-                vulkano::pipeline::PipelineBindPoint::Graphics,
-                pipeline.layout().clone(),
-                0,
-                uniform_buffer_sets[i].clone(),
-            )?
-            .bind_vertex_buffers(0, vertex_buffer.clone())?
-            .bind_index_buffer(index_buffer.clone())?
-            .draw_indexed(index_buffer.len() as u32, 1, 0, 0, 0)?
-            .end_render_pass(Default::default())?;
-
-        results.push(builder.build()?);
-    }
-    Ok(results)
 }

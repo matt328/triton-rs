@@ -10,8 +10,9 @@ use vulkano::instance::InstanceCreateFlags;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferExecFuture,
-        PrimaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
+        CommandBufferExecFuture, CommandBufferUsage, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
+        SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -20,8 +21,8 @@ use vulkano::{
     image::ImageUsage,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-    pipeline::{graphics::viewport::Viewport, Pipeline},
-    render_pass::RenderPass,
+    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline},
+    render_pass::{Framebuffer, RenderPass},
     shader::ShaderModule,
     swapchain::{
         self, PresentFuture, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo,
@@ -36,15 +37,13 @@ use vulkano::{
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::{
-    game::State,
-    graphics::shaders::{CUBE_INDICES, CUBE_VERTICES},
-};
+use crate::game::{State, Transform};
 
 use super::{
     helpers,
     mesh::{BasicMesh, MeshBuilder},
-    shaders, Camera,
+    shaders::{self, VertexPositionColor},
+    Camera,
 };
 type MyJoinFuture = JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>;
 type MyCommandBufferFuture = CommandBufferExecFuture<MyJoinFuture>;
@@ -67,17 +66,18 @@ pub struct Renderer {
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
     queue: Arc<Queue>,
+    meshes: Vec<BasicMesh>,
 
+    pipeline: Arc<GraphicsPipeline>,
     render_pass: Arc<RenderPass>,
 
     // Per Frame Data
     previous_fence_i: u32,
-    command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
     fences: FenceSignalFuturesList,
     uniform_buffers: Vec<Subbuffer<shaders::vs_position_color::FrameData>>,
     uniform_buffer_sets: Vec<Arc<PersistentDescriptorSet>>,
+    framebuffers: Vec<Arc<Framebuffer>>,
 
-    mesh: BasicMesh,
     camera: Arc<Box<dyn Camera>>,
 }
 
@@ -169,12 +169,6 @@ impl Renderer {
         let framebuffers =
             helpers::get_framebuffers(&images, render_pass.clone(), memory_allocator.clone())?;
 
-        let mesh = MeshBuilder::default()
-            .with_vertices(CUBE_VERTICES.to_vec())
-            .with_indices(CUBE_INDICES.to_vec())
-            .build(memory_allocator.clone())
-            .context("building mesh")?;
-
         let vs = shaders::vs_position_color::load(device.clone())
             .expect("failed to create shader module");
         let fs = shaders::fs_basic::load(device.clone()).expect("failed to create shader module");
@@ -236,16 +230,6 @@ impl Renderer {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let command_buffers = helpers::get_command_buffers(
-            &command_buffer_allocator,
-            &queue,
-            &pipeline,
-            &framebuffers,
-            &mesh.vertex_buffer,
-            &mesh.index_buffer,
-            &uniform_buffer_sets,
-        )?;
-
         Ok(Renderer {
             device,
             swapchain,
@@ -255,9 +239,7 @@ impl Renderer {
             fs,
             memory_allocator,
             command_buffer_allocator,
-            command_buffers,
             queue,
-            mesh,
             window_resized: true,
             dimensions: window.inner_size(),
             need_swapchain_recreation: true,
@@ -266,7 +248,25 @@ impl Renderer {
             uniform_buffers,
             uniform_buffer_sets,
             camera,
+            meshes: vec![],
+            framebuffers,
+            pipeline,
         })
+    }
+
+    pub fn create_mesh(
+        &mut self,
+        verts: Vec<VertexPositionColor>,
+        indices: Vec<u16>,
+    ) -> anyhow::Result<usize> {
+        let position = self.meshes.len();
+        let mesh = MeshBuilder::default()
+            .with_vertices(verts)
+            .with_indices(indices)
+            .build(self.memory_allocator.clone())
+            .context("building mesh")?;
+        self.meshes.push(mesh);
+        Ok(position)
     }
 
     pub fn window_resized(&mut self, new_size: PhysicalSize<u32>) {
@@ -288,7 +288,7 @@ impl Renderer {
 
             self.swapchain = new_swapchain;
 
-            let new_framebuffers = helpers::get_framebuffers(
+            self.framebuffers = helpers::get_framebuffers(
                 &new_images,
                 self.render_pass.clone(),
                 self.memory_allocator.clone(),
@@ -305,16 +305,7 @@ impl Renderer {
                     self.render_pass.clone(),
                     self.viewport.clone(),
                 )?;
-
-                self.command_buffers = helpers::get_command_buffers(
-                    &self.command_buffer_allocator,
-                    &self.queue,
-                    &new_pipeline,
-                    &new_framebuffers,
-                    &self.mesh.vertex_buffer,
-                    &self.mesh.index_buffer,
-                    &self.uniform_buffer_sets,
-                )?;
+                self.pipeline = new_pipeline;
             }
         }
 
@@ -369,12 +360,15 @@ impl Renderer {
             proj: projection.into(),
         };
 
+        // Create a new command buffer here and record it
+        // Then execute it, and i guess its ok to just drop it on the floor since
+        // vulkano will pool them?
+
+        let command_buffer = self.record_command_buffer(image_i, &self.meshes)?;
+
         let future = previous_future
             .join(acquire_future)
-            .then_execute(
-                self.queue.clone(),
-                self.command_buffers[image_i as usize].clone(),
-            )
+            .then_execute(self.queue.clone(), command_buffer)
             .unwrap()
             .then_swapchain_present(
                 self.queue.clone(),
@@ -397,5 +391,49 @@ impl Renderer {
 
         self.previous_fence_i = image_i;
         Ok(())
+    }
+
+    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: &Transform) {}
+
+    pub fn record_command_buffer(
+        &self,
+        index: u32,
+        meshes: &Vec<BasicMesh>,
+    ) -> anyhow::Result<Arc<PrimaryAutoCommandBuffer>> {
+        let mut builder = AutoCommandBufferBuilder::primary(
+            &self.command_buffer_allocator,
+            self.queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        )?;
+
+        builder
+            .begin_render_pass(
+                RenderPassBeginInfo {
+                    clear_values: vec![Some([0.392, 0.494, 0.929, 1.0].into()), Some(1f32.into())],
+                    ..RenderPassBeginInfo::framebuffer(self.framebuffers[index as usize].clone())
+                },
+                SubpassBeginInfo {
+                    contents: SubpassContents::Inline,
+                    ..Default::default()
+                },
+            )?
+            .bind_pipeline_graphics(self.pipeline.clone())?
+            .bind_descriptor_sets(
+                vulkano::pipeline::PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
+                self.uniform_buffer_sets[index as usize].clone(),
+            )?;
+
+        for mesh in meshes {
+            builder
+                .bind_vertex_buffers(0, mesh.vertex_buffer.clone())?
+                .bind_index_buffer(mesh.index_buffer.clone())?
+                .draw_indexed(mesh.index_buffer.len() as u32, 1, 0, 0, 0)?;
+        }
+
+        builder.end_render_pass(Default::default())?;
+
+        builder.build().context("building command buffer")
     }
 }

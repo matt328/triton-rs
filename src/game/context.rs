@@ -7,11 +7,11 @@ use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::graphics::{Camera, Renderer};
+use crate::graphics::{Camera, Renderer, CUBE_INDICES, CUBE_VERTICES};
 
 use super::{
     camera::MouseLookCamera,
-    components::{BlendFactor, RenderSystem, ResizeEvents},
+    components::{BlendFactor, RenderSystem, Renderable, ResizeEvents},
     state::next_state,
     State, Transform, TransformSystem,
 };
@@ -36,13 +36,15 @@ impl<'a, 'b> Context<'a, 'b> {
             extent[0] / extent[1],
         )));
 
-        let renderer = Renderer::new(required_extensions, window.clone(), camera.clone())?;
+        let mut renderer = Renderer::new(required_extensions, window.clone(), camera.clone())?;
 
         let state = State::default();
 
         let mut world = World::new();
 
         world.insert(ResizeEvents(Vec::new()));
+
+        let mesh_id = renderer.create_mesh(CUBE_VERTICES.into(), CUBE_INDICES.into())?;
 
         let mut fixed_update_dispatcher = DispatcherBuilder::new()
             .with(TransformSystem, "transform_system", &[])
@@ -62,6 +64,7 @@ impl<'a, 'b> Context<'a, 'b> {
                 rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
                 scale: Vector3::new(1.0, 1.0, 1.0),
             })
+            .with(Renderable { mesh_id })
             .build();
 
         Ok(Context {
@@ -75,7 +78,6 @@ impl<'a, 'b> Context<'a, 'b> {
     }
 
     pub fn update(&mut self) {
-        info!("context.update()");
         let _span = span!(Level::INFO, "fixed_update").entered();
         self.fixed_update_dispatcher.dispatch(&self.world);
         self.previous_state = self.state;
