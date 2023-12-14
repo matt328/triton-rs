@@ -1,15 +1,13 @@
 use anyhow::Context;
-use cgmath::{Quaternion, Vector3, Zero};
+
 use log::info;
-#[cfg(feature = "tracing")]
-use log::info;
-use specs::{Builder, DispatcherBuilder, Read, ReadStorage, System, World, WorldExt, WriteStorage};
+use specs::{Read, ReadStorage, System, WriteStorage};
 use tracing::{span, Level};
 #[cfg(feature = "tracing")]
 use tracing_subscriber::layer::SubscriberExt;
 use triton::{
     app::App,
-    game::{Position, Transform, TransformSystem, Velocity},
+    game::{Position, Velocity},
 };
 
 struct HelloWorld;

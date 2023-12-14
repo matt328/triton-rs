@@ -65,6 +65,7 @@ impl<'a, 'b> GameLoop<'a, 'b> {
         let update_loop = span!(Level::INFO, "update loop").entered();
 
         while self.accumulated_time >= FIXED_TIME_STEP {
+            event!(Level::INFO, "calling context.upadte()");
             self.context.update();
             self.accumulated_time -= FIXED_TIME_STEP;
         }

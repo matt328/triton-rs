@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use cgmath::{Quaternion, Vector3, Zero};
+use log::info;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
+use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -73,12 +75,15 @@ impl<'a, 'b> Context<'a, 'b> {
     }
 
     pub fn update(&mut self) {
+        info!("context.update()");
+        let _span = span!(Level::INFO, "fixed_update").entered();
         self.fixed_update_dispatcher.dispatch(&self.world);
         self.previous_state = self.state;
         self.state = next_state(&self.state);
     }
 
     pub fn render(&mut self, blending_factor: f32) -> anyhow::Result<()> {
+        let _span = span!(Level::INFO, "render").entered();
         self.world.insert(BlendFactor(blending_factor));
         self.render_dispatcher.dispatch(&self.world);
         Ok(())
