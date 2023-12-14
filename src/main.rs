@@ -76,70 +76,7 @@ fn main() -> anyhow::Result<()> {
 
     let _root = span!(Level::INFO, "root").entered();
 
-    let mut world = World::new();
+    let app = App::new()?;
 
-    let mut dispatcher = DispatcherBuilder::new()
-        .with(HelloWorld, "hello_world", &[])
-        .with(UpdatePos, "update_pos", &["hello_world"])
-        .with(HelloWorld, "hello_updated", &["update_pos"])
-        .build();
-
-    dispatcher.setup(&mut world);
-
-    let mut fixed_update_dispatcher = DispatcherBuilder::new()
-        .with(TransformSystem, "transform_system", &[])
-        .build();
-
-    fixed_update_dispatcher.setup(&mut world);
-
-    world
-        .create_entity()
-        .with(Transform {
-            position: Vector3::zero(),
-            rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
-            scale: Vector3::new(1.0, 1.0, 1.0),
-        })
-        .build();
-
-    world
-        .create_entity()
-        .with(Position {
-            x: 4.0,
-            y: 7.0,
-            z: 0.0,
-        })
-        .build();
-
-    world
-        .create_entity()
-        .with(Position {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        })
-        .with(Velocity { x: 0.1, y: 0.1 })
-        .build();
-
-    world.insert(Phase(UpdatePhase::PreUpdate));
-
-    dispatcher.dispatch(&mut world);
-
-    *world.write_resource::<Phase>() = Phase(UpdatePhase::Update);
-
-    dispatcher.dispatch(&mut world);
-
-    {
-        let mut phase = world.write_resource::<Phase>();
-        *phase = Phase(UpdatePhase::PostUpate);
-    }
-
-    dispatcher.dispatch(&mut world);
-
-    world.maintain();
-
-    Ok(())
-
-    // let app = App::new()?;
-
-    // app.run()
+    app.run()
 }

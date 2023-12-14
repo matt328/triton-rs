@@ -1,4 +1,4 @@
-pub use components::{Position, Transform, TransformSystem, Velocity};
+pub use components::{BlendFactor, Position, ResizeEvents, Transform, TransformSystem, Velocity};
 pub use game_loop::GameLoop;
 pub use state::State;
 

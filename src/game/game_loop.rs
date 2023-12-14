@@ -64,8 +64,6 @@ impl<'a, 'b> GameLoop<'a, 'b> {
 
         let update_loop = span!(Level::INFO, "update loop").entered();
 
-        self.context.pre_update();
-
         while self.accumulated_time >= FIXED_TIME_STEP {
             self.context.update();
             self.accumulated_time -= FIXED_TIME_STEP;
@@ -77,9 +75,7 @@ impl<'a, 'b> GameLoop<'a, 'b> {
 
         event!(Level::INFO, blending_factor);
 
-        self.context.post_update(blending_factor);
-
-        self.context.render()?;
+        self.context.render(blending_factor)?;
 
         #[cfg(feature = "tracing")]
         frame_mark();

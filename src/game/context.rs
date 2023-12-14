@@ -9,17 +9,18 @@ use crate::graphics::{Camera, Renderer};
 
 use super::{
     camera::MouseLookCamera,
-    state::{blend_state, next_state},
+    components::{BlendFactor, RenderSystem, ResizeEvents},
+    state::next_state,
     State, Transform, TransformSystem,
 };
 
 pub struct Context<'a, 'b> {
-    renderer: Renderer,
     camera: Arc<Box<dyn Camera>>,
     world: World,
     state: State,
     previous_state: State,
     fixed_update_dispatcher: Dispatcher<'a, 'b>,
+    render_dispatcher: Dispatcher<'a, 'b>,
 }
 
 impl<'a, 'b> Context<'a, 'b> {
@@ -34,9 +35,23 @@ impl<'a, 'b> Context<'a, 'b> {
         )));
 
         let renderer = Renderer::new(required_extensions, window.clone(), camera.clone())?;
+
         let state = State::default();
 
         let mut world = World::new();
+
+        world.insert(ResizeEvents(Vec::new()));
+
+        let mut fixed_update_dispatcher = DispatcherBuilder::new()
+            .with(TransformSystem, "transform_system", &[])
+            .build();
+
+        let mut render_dispatcher = DispatcherBuilder::new()
+            .with_thread_local(RenderSystem::new(renderer))
+            .build();
+
+        fixed_update_dispatcher.setup(&mut world);
+        render_dispatcher.setup(&mut world);
 
         world
             .create_entity()
@@ -47,38 +62,29 @@ impl<'a, 'b> Context<'a, 'b> {
             })
             .build();
 
-        let mut fixed_update_dispatcher = DispatcherBuilder::new().build();
-
-        fixed_update_dispatcher.setup(&mut world);
-
         Ok(Context {
             camera,
-            renderer,
             state,
             previous_state: State::default(),
             world,
             fixed_update_dispatcher,
+            render_dispatcher,
         })
     }
 
-    pub fn pre_update(&mut self) {
-        self.previous_state = self.state;
-    }
-
     pub fn update(&mut self) {
+        self.fixed_update_dispatcher.dispatch(&self.world);
         self.previous_state = self.state;
         self.state = next_state(&self.state);
     }
 
-    pub fn post_update(&mut self, blending_factor: f32) {
-        self.state = blend_state(&self.previous_state, &self.state, blending_factor);
-    }
-
-    pub fn render(&mut self) -> anyhow::Result<()> {
-        self.renderer.draw(self.state)
+    pub fn render(&mut self, blending_factor: f32) -> anyhow::Result<()> {
+        self.world.insert(BlendFactor(blending_factor));
+        self.render_dispatcher.dispatch(&self.world);
+        Ok(())
     }
 
     pub fn window_resized(&mut self, new_size: PhysicalSize<u32>) {
-        self.renderer.window_resized(new_size);
+        self.world.write_resource::<ResizeEvents>().0.push(new_size);
     }
 }
