@@ -1,6 +1,7 @@
 use cgmath::{Deg, Quaternion, Rotation3, Vector3};
 
 use specs::{Component, Read, ReadStorage, System, VecStorage, Write, WriteStorage};
+use vulkano::buffer::BufferContents;
 use winit::dpi::PhysicalSize;
 
 use crate::graphics::Renderer;
@@ -11,12 +12,13 @@ pub struct Renderable {
     pub mesh_id: usize,
 }
 
-#[derive(Component, Debug)]
+#[repr(C)]
+#[derive(BufferContents, Component, Debug, Clone, Copy)]
 #[storage(VecStorage)]
 pub struct Transform {
-    pub position: Vector3<f32>,
-    pub rotation: Quaternion<f32>,
-    pub scale: Vector3<f32>,
+    pub position: [f32; 3],
+    pub rotation: [f32; 4],
+    pub scale: [f32; 3],
 }
 
 #[derive(Default)]
@@ -54,9 +56,9 @@ impl<'a> System<'a> for RenderSystem {
         for (transform, mesh) in (&transforms, &meshes).join() {
             // Apply blending_factor to Transforms before passing
             // them to renderer
-            self.renderer.enqueue_mesh(mesh.mesh_id, transform);
+            self.renderer.enqueue_mesh(mesh.mesh_id, transform.clone());
         }
-        self.renderer.draw();
+        // self.renderer.draw();
     }
 }
 
@@ -74,7 +76,10 @@ impl<'a> System<'a> for TransformSystem {
             let axis = Vector3::new(0.0, 1.0, 0.0);
             let angle = Deg(0.5);
             let new_rotation = Quaternion::from_axis_angle(axis, angle);
-            transform.rotation = transform.rotation * new_rotation;
+
+            let rot = Quaternion::from(transform.rotation) * new_rotation;
+
+            transform.rotation = rot.into();
         }
     }
 }

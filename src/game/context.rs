@@ -60,9 +60,9 @@ impl<'a, 'b> Context<'a, 'b> {
         world
             .create_entity()
             .with(Transform {
-                position: Vector3::zero(),
-                rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
-                scale: Vector3::new(1.0, 1.0, 1.0),
+                position: [0.0, 0.0, 0.0],
+                rotation: [1.0, 0.0, 0.0, 0.0],
+                scale: [1.0, 1.0, 1.0],
             })
             .with(Renderable { mesh_id })
             .build();

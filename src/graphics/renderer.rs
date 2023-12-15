@@ -79,6 +79,7 @@ pub struct Renderer {
     framebuffers: Vec<Arc<Framebuffer>>,
 
     camera: Arc<Box<dyn Camera>>,
+    object_data: Vec<Transform>,
 }
 
 impl Renderer {
@@ -251,6 +252,7 @@ impl Renderer {
             meshes: vec![],
             framebuffers,
             pipeline,
+            object_data: vec![],
         })
     }
 
@@ -343,12 +345,10 @@ impl Renderer {
 
         let (projection, view) = self.camera.calculate_matrices();
 
-        /* Move this into an entity
-        Also split FrameData into separate FrameData and EntityData uniform buffers
-        Next move EntityData uniform buffers all into a SSBO (shader storage buffer object)
-        that can just be
-        set once per frame and referenced in the shader via gl_InstanceId i think?
+        /*
+           Loop over the enqueued renderables
         */
+
         let axis = Vector3::new(0.0, 1.0, 0.0);
         let angle = Deg(state.triangle_rotation);
         let model: Matrix4<f32> = Matrix4::from_axis_angle(axis, angle);
@@ -360,9 +360,19 @@ impl Renderer {
             proj: projection.into(),
         };
 
-        // Create a new command buffer here and record it
-        // Then execute it, and i guess its ok to just drop it on the floor since
-        // vulkano will pool them?
+        let object_data_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            self.object_data,
+        )?;
 
         let command_buffer = self.record_command_buffer(image_i, &self.meshes)?;
 
@@ -393,7 +403,13 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: &Transform) {}
+    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: Transform) {
+        /*
+           For now the renderer will just render every mesh it has.
+           The number of Transforms here should match up.
+        */
+        self.object_data.push(transform);
+    }
 
     pub fn record_command_buffer(
         &self,
@@ -425,11 +441,11 @@ impl Renderer {
                 self.uniform_buffer_sets[index as usize].clone(),
             )?;
 
-        for mesh in meshes {
+        for (i, mesh) in meshes.iter().enumerate() {
             builder
                 .bind_vertex_buffers(0, mesh.vertex_buffer.clone())?
                 .bind_index_buffer(mesh.index_buffer.clone())?
-                .draw_indexed(mesh.index_buffer.len() as u32, 1, 0, 0, 0)?;
+                .draw_indexed(mesh.index_buffer.len() as u32, 1, 0, 0, i as u32)?;
         }
 
         builder.end_render_pass(Default::default())?;
