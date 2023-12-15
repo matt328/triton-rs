@@ -77,9 +77,10 @@ pub struct Renderer {
     uniform_buffers: Vec<Subbuffer<shaders::vs_position_color::FrameData>>,
     uniform_buffer_sets: Vec<Arc<PersistentDescriptorSet>>,
     framebuffers: Vec<Arc<Framebuffer>>,
+    object_data_buffers: Vec<Subbuffer<Transform>>,
 
     camera: Arc<Box<dyn Camera>>,
-    object_data: Vec<Transform>,
+    object_data: Vec<(usize, Transform)>,
 }
 
 impl Renderer {
@@ -218,6 +219,24 @@ impl Renderer {
             })
             .collect::<anyhow::Result<Vec<BuffersType>>>()?;
 
+        let mut object_data_buffers: Vec<Subbuffer<Transform>> = vec![];
+        for _ in 0..swapchain.image_count() {
+            let b: Subbuffer<Transform> = Buffer::new_sized(
+                memory_allocator.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::STORAGE_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+            )
+            .context("")?;
+            object_data_buffers.push(b);
+        }
+
         let uniform_buffer_sets = uniform_buffers
             .iter()
             .map(|buffer| {
@@ -253,6 +272,7 @@ impl Renderer {
             framebuffers,
             pipeline,
             object_data: vec![],
+            object_data_buffers,
         })
     }
 
@@ -360,6 +380,8 @@ impl Renderer {
             proj: projection.into(),
         };
 
+        self.object_data.sort_by_key(|k| k.0);
+
         let object_data_buffer = Buffer::from_iter(
             self.memory_allocator.clone(),
             BufferCreateInfo {
@@ -371,7 +393,7 @@ impl Renderer {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            self.object_data,
+            self.object_data.iter().map(|t| t.1),
         )?;
 
         let command_buffer = self.record_command_buffer(image_i, &self.meshes)?;
@@ -408,7 +430,7 @@ impl Renderer {
            For now the renderer will just render every mesh it has.
            The number of Transforms here should match up.
         */
-        self.object_data.push(transform);
+        self.object_data.push((mesh_id, transform));
     }
 
     pub fn record_command_buffer(
