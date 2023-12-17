@@ -1,59 +1,12 @@
 use anyhow::Context;
 
+#[cfg(feature = "tracing")]
 use log::info;
-use specs::{Read, ReadStorage, System, WriteStorage};
+#[cfg(feature = "tracing")]
 use tracing::{span, Level};
 #[cfg(feature = "tracing")]
 use tracing_subscriber::layer::SubscriberExt;
-use triton::{
-    app::App,
-    game::{Position, Velocity},
-};
-
-struct HelloWorld;
-
-impl<'a> System<'a> for HelloWorld {
-    type SystemData = (Read<'a, Phase>, ReadStorage<'a, Position>);
-
-    fn run(&mut self, data: Self::SystemData) {
-        use specs::Join;
-        let (phase, position) = data;
-
-        for position in position.join() {
-            info!("Hello, {:?} - {:?}", phase.0, &position);
-        }
-    }
-}
-
-struct UpdatePos;
-
-impl<'a> System<'a> for UpdatePos {
-    type SystemData = (ReadStorage<'a, Velocity>, WriteStorage<'a, Position>);
-
-    fn run(&mut self, (vel, mut pos): Self::SystemData) {
-        use specs::Join;
-        for (vel, pos) in (&vel, &mut pos).join() {
-            pos.x += vel.x * 0.05;
-            pos.y += vel.y * 0.05;
-        }
-    }
-}
-
-#[derive(Debug)]
-enum UpdatePhase {
-    PreUpdate,
-    Update,
-    PostUpate,
-}
-
-impl Default for UpdatePhase {
-    fn default() -> Self {
-        UpdatePhase::Update
-    }
-}
-
-#[derive(Default)]
-struct Phase(UpdatePhase);
+use triton::app::App;
 
 fn main() -> anyhow::Result<()> {
     log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
@@ -72,6 +25,7 @@ fn main() -> anyhow::Result<()> {
     )
     .expect("setting up tracing");
 
+    #[cfg(feature = "tracing")]
     let _root = span!(Level::INFO, "root").entered();
 
     let app = App::new()?;

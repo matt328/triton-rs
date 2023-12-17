@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use cgmath::{Deg, Matrix4, Vector3};
+
+use cgmath::{Matrix4, SquareMatrix};
 use log::{error, info};
 
 use tracing::{event, span, Level};
@@ -19,8 +20,7 @@ use vulkano::{
         SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, PersistentDescriptorSet,
-        WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
@@ -28,7 +28,6 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline},
     render_pass::{Framebuffer, RenderPass},
-    shader::ShaderModule,
     swapchain::{
         self, PresentFuture, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo,
         SwapchainPresentInfo,
@@ -42,13 +41,12 @@ use vulkano::{
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::game::{State, Transform};
+use crate::game::{Camera, Transform};
 
 use super::{
     helpers,
     mesh::{BasicMesh, MeshBuilder},
     shaders::{self, VertexPositionColor},
-    Camera,
 };
 type MyJoinFuture = JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>;
 type MyCommandBufferFuture = CommandBufferExecFuture<MyJoinFuture>;
@@ -64,9 +62,6 @@ pub struct Renderer {
     window_resized: bool,
     dimensions: PhysicalSize<u32>,
     need_swapchain_recreation: bool,
-
-    vs: Arc<ShaderModule>,
-    fs: Arc<ShaderModule>,
 
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
@@ -85,16 +80,12 @@ pub struct Renderer {
     uniform_buffers: Vec<Subbuffer<shaders::vs_position_color::FrameData>>,
     framebuffers: Vec<Arc<Framebuffer>>,
 
-    camera: Arc<Box<dyn Camera>>,
     object_data: Vec<shaders::vs_position_color::ObjectData>,
+    cam_matrices: (Matrix4<f32>, Matrix4<f32>),
 }
 
 impl Renderer {
-    pub fn new(
-        extensions: InstanceExtensions,
-        window: Arc<Window>,
-        camera: Arc<Box<dyn Camera>>,
-    ) -> anyhow::Result<Self> {
+    pub fn new(extensions: InstanceExtensions, window: Arc<Window>) -> anyhow::Result<Self> {
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
 
         let create_info = InstanceCreateInfo {
@@ -242,8 +233,6 @@ impl Renderer {
             swapchain,
             render_pass,
             viewport,
-            vs,
-            fs,
             memory_allocator,
             command_buffer_allocator,
             descriptor_set_allocator,
@@ -254,12 +243,12 @@ impl Renderer {
             fences: vec![None; frames_in_flight],
             previous_fence_i: 0,
             uniform_buffers,
-            camera,
             meshes: vec![],
             framebuffers,
             pipeline,
             object_data: vec![],
             buffer_allocator,
+            cam_matrices: (Matrix4::identity(), Matrix4::identity()),
         })
     }
 
@@ -361,12 +350,10 @@ impl Renderer {
         fence_wait.exit();
 
         let update_uniforms = span!(Level::INFO, "update_uniforms").entered();
-        let (projection, view) = self.camera.calculate_matrices();
-
         // Update Per Frame buffers here
         *self.uniform_buffers[image_i as usize].write()? = shaders::vs_position_color::FrameData {
-            view: view.into(),
-            proj: projection.into(),
+            view: self.cam_matrices.1.into(),
+            proj: self.cam_matrices.0.into(),
         };
         update_uniforms.exit();
 
@@ -406,11 +393,18 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: Transform) {
+    // TODO: eventually hook up correlating mesh_id to transforms here
+    // Use the mesh_id to order the transforms in the buffer
+    // Then loop over meshes, passing mesh_id to the draw call as instance_id
+    pub fn enqueue_mesh(&mut self, _mesh_id: usize, transform: Transform) {
         let d = shaders::vs_position_color::ObjectData {
             model: transform.model().into(),
         };
         self.object_data.push(d);
+    }
+
+    pub fn set_camera_params(&mut self, cam_matrices: (Matrix4<f32>, Matrix4<f32>)) {
+        self.cam_matrices = cam_matrices;
     }
 
     pub fn record_command_buffer(

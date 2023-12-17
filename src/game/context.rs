@@ -5,17 +5,19 @@ use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::graphics::{Camera, Renderer, CUBE_INDICES, CUBE_VERTICES};
+use crate::graphics::{Renderer, CUBE_INDICES, CUBE_VERTICES};
 
 use super::{
-    camera::MouseLookCamera,
-    components::{BlendFactor, RenderSystem, Renderable, ResizeEvents},
+    components::{
+        render::{RenderSystem, Renderable},
+        transform::{Transform, TransformSystem},
+        ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
+    },
     state::next_state,
-    State, Transform, TransformSystem,
+    State,
 };
 
 pub struct Context<'a, 'b> {
-    camera: Arc<Box<dyn Camera>>,
     world: World,
     state: State,
     previous_state: State,
@@ -30,11 +32,7 @@ impl<'a, 'b> Context<'a, 'b> {
     ) -> anyhow::Result<Self> {
         let extent: [f32; 2] = window.inner_size().into();
 
-        let camera: Arc<Box<dyn Camera>> = Arc::new(Box::new(MouseLookCamera::new_with_aspect(
-            extent[0] / extent[1],
-        )));
-
-        let mut renderer = Renderer::new(required_extensions, window.clone(), camera.clone())?;
+        let mut renderer = Renderer::new(required_extensions, window.clone())?;
 
         let state = State::default();
 
@@ -46,6 +44,7 @@ impl<'a, 'b> Context<'a, 'b> {
 
         let mut fixed_update_dispatcher = DispatcherBuilder::new()
             .with(TransformSystem, "transform_system", &[])
+            .with(CameraSystem, "camera_system", &[])
             .build();
 
         let mut render_dispatcher = DispatcherBuilder::new()
@@ -65,13 +64,22 @@ impl<'a, 'b> Context<'a, 'b> {
             .with(Renderable { mesh_id })
             .build();
 
+        let cam = world
+            .create_entity()
+            .with(Camera {
+                aspect_ratio: extent[0] / extent[1],
+                ..Default::default()
+            })
+            .build();
+
+        world.insert(ActiveCamera(cam));
+
         world
             .write_resource::<ResizeEvents>()
             .0
             .push(window.inner_size());
 
         Ok(Context {
-            camera,
             state,
             previous_state: State::default(),
             world,
