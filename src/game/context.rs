@@ -49,9 +49,19 @@ impl<'a, 'b> Context<'a, 'b> {
         world
             .create_entity()
             .with(Transform {
-                position: [0.0, 0.0, 0.0],
-                rotation: [1.0, 0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
+                position: [0.0, 0.0, 0.0].into(),
+                rotation: [1.0, 0.0, 0.0, 0.0].into(),
+                scale: [1.0, 1.0, 1.0].into(),
+            })
+            .with(Renderable { mesh_id })
+            .build();
+
+        world
+            .create_entity()
+            .with(Transform {
+                position: [5.0, 0.0, 0.0].into(),
+                rotation: [1.0, 0.0, 0.0, 0.0].into(),
+                scale: [1.0, 1.0, 1.0].into(),
             })
             .with(Renderable { mesh_id })
             .build();

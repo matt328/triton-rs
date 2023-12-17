@@ -80,7 +80,7 @@ pub struct Renderer {
     uniform_buffers: Vec<Subbuffer<shaders::vs_position_color::FrameData>>,
     framebuffers: Vec<Arc<Framebuffer>>,
 
-    object_data: Vec<shaders::vs_position_color::ObjectData>,
+    object_data: Vec<(usize, shaders::vs_position_color::ObjectData)>,
     cam_matrices: (Matrix4<f32>, Matrix4<f32>),
 }
 
@@ -361,11 +361,11 @@ impl Renderer {
     // TODO: eventually hook up correlating mesh_id to transforms here
     // Use the mesh_id to order the transforms in the buffer
     // Then loop over meshes, passing mesh_id to the draw call as instance_id
-    pub fn enqueue_mesh(&mut self, _mesh_id: usize, transform: Transform) {
+    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: Transform) {
         let d = shaders::vs_position_color::ObjectData {
             model: transform.model().into(),
         };
-        self.object_data.push(d);
+        self.object_data.push((mesh_id, d));
     }
 
     pub fn set_camera_params(&mut self, cam_matrices: (Matrix4<f32>, Matrix4<f32>)) {
@@ -395,12 +395,13 @@ impl Renderer {
 
         // Update the object data buffer
         let object_buffer_span = span!(Level::INFO, "update object buffer").entered();
+
+        let objects: Vec<_> = self.object_data.iter().map(|a| a.1).collect();
+
         let object_data_buffer = self
             .buffer_allocator
             .allocate_slice(self.object_data.len() as _)?;
-        object_data_buffer
-            .write()?
-            .copy_from_slice(&self.object_data);
+        object_data_buffer.write()?.copy_from_slice(&objects);
         object_buffer_span.exit();
 
         // (re)create the object data descriptor set
@@ -449,7 +450,9 @@ impl Renderer {
             )?;
 
         event!(Level::INFO, "meshes: {}", meshes.len());
-        for (i, mesh) in meshes.iter().enumerate() {
+
+        for (i, (mesh_index, _)) in self.object_data.iter().enumerate() {
+            let mesh = &self.meshes[*mesh_index];
             builder
                 .bind_vertex_buffers(0, mesh.vertex_buffer.clone())?
                 .bind_index_buffer(mesh.index_buffer.clone())?

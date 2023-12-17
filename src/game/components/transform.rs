@@ -1,31 +1,20 @@
 use cgmath::{Deg, Matrix4, Quaternion, Rotation3, Vector3};
 use specs::{Component, System, VecStorage, WriteStorage};
-use vulkano::buffer::BufferContents;
 
 #[repr(C)]
-#[derive(BufferContents, Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone, Copy)]
 #[storage(VecStorage)]
 pub struct Transform {
-    pub position: [f32; 3],
-    pub rotation: [f32; 4],
-    pub scale: [f32; 3],
+    pub position: Vector3<f32>,
+    pub rotation: Quaternion<f32>,
+    pub scale: Vector3<f32>,
 }
 
 impl Transform {
     pub fn model(&self) -> Matrix4<f32> {
-        let scale_matrix =
-            Matrix4::from_nonuniform_scale(self.scale[0], self.scale[1], self.scale[2]);
-        let rotation_matrix = Matrix4::from(Quaternion::new(
-            self.rotation[0],
-            self.rotation[1],
-            self.rotation[2],
-            self.rotation[3],
-        ));
-        let translation_matrix = Matrix4::from_translation(Vector3::new(
-            self.position[0],
-            self.position[1],
-            self.position[2],
-        ));
+        let scale_matrix = Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z);
+        let rotation_matrix = Matrix4::from(self.rotation);
+        let translation_matrix = Matrix4::from_translation(self.position);
         translation_matrix * rotation_matrix * scale_matrix
     }
 }
