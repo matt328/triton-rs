@@ -41,10 +41,9 @@ impl<'a> System<'a> for RenderSystem {
             data;
 
         // Handle Resize Events
-        if resize_events.0.len() > 0 {
+        if !resize_events.0.is_empty() {
             event!(Level::INFO, "render system resize event");
             self.renderer.window_resized(resize_events.0[0]);
-            // Since this system is added as a threadlocal, i *think* it will always be last
             resize_events.0.clear();
         }
 

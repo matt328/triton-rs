@@ -38,7 +38,6 @@ impl<'a> System<'a> for TransformSystem {
     fn run(&mut self, mut transforms: Self::SystemData) {
         use specs::Join;
         for transform in (&mut transforms).join() {
-            // info!("Transform: {:?}", transform);
             // TODO: this is hardcoded for now.
             // Eventually have some controller component or system
             let axis = Vector3::new(0.0, 1.0, 0.0);

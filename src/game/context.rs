@@ -7,20 +7,14 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::graphics::{Renderer, CUBE_INDICES, CUBE_VERTICES};
 
-use super::{
-    components::{
-        render::{RenderSystem, Renderable},
-        transform::{Transform, TransformSystem},
-        ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
-    },
-    state::next_state,
-    State,
+use super::components::{
+    render::{RenderSystem, Renderable},
+    transform::{Transform, TransformSystem},
+    ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
 };
 
 pub struct Context<'a, 'b> {
     world: World,
-    state: State,
-    previous_state: State,
     fixed_update_dispatcher: Dispatcher<'a, 'b>,
     render_dispatcher: Dispatcher<'a, 'b>,
 }
@@ -33,8 +27,6 @@ impl<'a, 'b> Context<'a, 'b> {
         let extent: [f32; 2] = window.inner_size().into();
 
         let mut renderer = Renderer::new(required_extensions, window.clone())?;
-
-        let state = State::default();
 
         let mut world = World::new();
 
@@ -80,8 +72,6 @@ impl<'a, 'b> Context<'a, 'b> {
             .push(window.inner_size());
 
         Ok(Context {
-            state,
-            previous_state: State::default(),
             world,
             fixed_update_dispatcher,
             render_dispatcher,
@@ -91,8 +81,6 @@ impl<'a, 'b> Context<'a, 'b> {
     pub fn update(&mut self) {
         let _span = span!(Level::INFO, "fixed_update").entered();
         self.fixed_update_dispatcher.dispatch(&self.world);
-        self.previous_state = self.state;
-        self.state = next_state(&self.state);
     }
 
     pub fn render(&mut self, blending_factor: f32) -> anyhow::Result<()> {

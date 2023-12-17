@@ -41,7 +41,7 @@ use vulkano::{
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::game::{Camera, Transform};
+use crate::game::Transform;
 
 use super::{
     helpers,
@@ -273,45 +273,18 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) -> anyhow::Result<()> {
-        let resize_swapchain = span!(Level::INFO, "resizing swapchain").entered();
-
-        let f = &mut self.fences[self.previous_fence_i as usize].as_mut();
-        match f {
-            Some(f) => f.cleanup_finished(),
+        // Have to cleanup_finished once in awhile to prevent leaking resources
+        let cleanup_fence = &mut self.fences[self.previous_fence_i as usize].as_mut();
+        match cleanup_fence {
+            Some(fence) => fence.cleanup_finished(),
             None => {}
         };
 
-        let is_zero = self.dimensions.height == 0 || self.dimensions.width == 0;
+        let is_zero_sized_window = self.dimensions.height == 0 || self.dimensions.width == 0;
 
-        if (self.window_resized || self.need_swapchain_recreation) && !is_zero {
-            event!(Level::INFO, "recreating swapchain");
-            self.need_swapchain_recreation = false;
-
-            let (new_swapchain, new_images) = self
-                .swapchain
-                .recreate(SwapchainCreateInfo {
-                    image_extent: self.dimensions.into(),
-                    ..self.swapchain.create_info()
-                })
-                .context("failed to recreate swapchain")?;
-
-            self.swapchain = new_swapchain;
-
-            self.framebuffers = Vec::new();
-
-            self.framebuffers = helpers::get_framebuffers(
-                &new_images,
-                self.render_pass.clone(),
-                self.memory_allocator.clone(),
-            )
-            .context("recreating framebuffers")?;
-
-            if self.window_resized {
-                self.viewport.extent = self.dimensions.into();
-            }
-            self.window_resized = false;
+        if (self.window_resized || self.need_swapchain_recreation) && !is_zero_sized_window {
+            self.resize_swapchain()?;
         }
-        resize_swapchain.exit();
 
         let acquire_image = span!(Level::INFO, "acquiring swapchain image").entered();
         let (image_i, suboptimal, acquire_future) =
@@ -332,32 +305,24 @@ impl Renderer {
         acquire_image.exit();
 
         let fence_wait = span!(Level::INFO, "awaiting/recreating fence").entered();
-        // wait for the fence related to this image to finish (normally this would be the oldest fence)
+        // If the current fence is a thing, wait on it, otherwise silently do nothing
         if let Some(image_fence) = &self.fences[image_i as usize] {
             image_fence.wait(None)?;
         }
 
+        // Set the previous_future to either the previous fence, or create a new one
+        // either way, box it
         let previous_future = match self.fences[self.previous_fence_i as usize].clone() {
-            // Create a NowFuture
             None => {
                 let mut now = sync::now(self.device.clone());
                 now.cleanup_finished();
                 now.boxed()
             }
-            // Use the existing FenceSignalFuture
             Some(fence) => fence.boxed(),
         };
         fence_wait.exit();
 
-        let update_uniforms = span!(Level::INFO, "update_uniforms").entered();
-        // Update Per Frame buffers here
-        *self.uniform_buffers[image_i as usize].write()? = shaders::vs_position_color::FrameData {
-            view: self.cam_matrices.1.into(),
-            proj: self.cam_matrices.0.into(),
-        };
-        update_uniforms.exit();
-
-        event!(Level::INFO, "objects: {}", self.object_data.len());
+        self.update_uniforms(image_i as usize)?;
 
         let command_buffer = self.record_command_buffer(image_i, &self.meshes)?;
 
@@ -374,7 +339,7 @@ impl Renderer {
             .then_signal_fence_and_flush();
         span.exit();
 
-        let span2 = span!(Level::INFO, "await_fence").entered();
+        let await_fence_span = span!(Level::INFO, "await_fence").entered();
         self.fences[image_i as usize] = match future.map_err(Validated::unwrap) {
             #[allow(clippy::arc_with_non_send_sync)]
             Ok(value) => Some(Arc::new(value)),
@@ -387,7 +352,7 @@ impl Renderer {
                 None
             }
         };
-        span2.exit();
+        await_fence_span.exit();
 
         self.previous_fence_i = image_i;
         Ok(())
@@ -407,6 +372,15 @@ impl Renderer {
         self.cam_matrices = cam_matrices;
     }
 
+    pub fn update_uniforms(&mut self, index: usize) -> anyhow::Result<()> {
+        let _span = span!(Level::INFO, "update_uniforms").entered();
+        *self.uniform_buffers[index].write()? = shaders::vs_position_color::FrameData {
+            view: self.cam_matrices.1.into(),
+            proj: self.cam_matrices.0.into(),
+        };
+        Ok(())
+    }
+
     pub fn record_command_buffer(
         &self,
         index: u32,
@@ -419,6 +393,7 @@ impl Renderer {
             CommandBufferUsage::MultipleSubmit,
         )?;
 
+        // Update the object data buffer
         let object_buffer_span = span!(Level::INFO, "update object buffer").entered();
         let object_data_buffer = self
             .buffer_allocator
@@ -428,6 +403,7 @@ impl Renderer {
             .copy_from_slice(&self.object_data);
         object_buffer_span.exit();
 
+        // (re)create the object data descriptor set
         let span_ds = span!(Level::INFO, "create object descriptor set").entered();
         let object_data_buffer_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
@@ -438,6 +414,7 @@ impl Renderer {
         .context("Creating Object Data Descriptor Set")?;
         span_ds.exit();
 
+        // (re)create the uniform buffer descriptor set
         let uniform_set = span!(Level::INFO, "create uniform descriptor set").entered();
         let uniform_buffer_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
@@ -470,6 +447,7 @@ impl Renderer {
                 0,
                 vec![uniform_buffer_set.clone(), object_data_buffer_set.clone()],
             )?;
+
         event!(Level::INFO, "meshes: {}", meshes.len());
         for (i, mesh) in meshes.iter().enumerate() {
             builder
@@ -481,5 +459,36 @@ impl Renderer {
         builder.end_render_pass(Default::default())?;
 
         builder.build().context("building command buffer")
+    }
+
+    pub fn resize_swapchain(&mut self) -> anyhow::Result<()> {
+        let _resize_swapchain = span!(Level::INFO, "resizing swapchain").entered();
+        event!(Level::INFO, "recreating swapchain");
+        self.need_swapchain_recreation = false;
+
+        let (new_swapchain, new_images) = self
+            .swapchain
+            .recreate(SwapchainCreateInfo {
+                image_extent: self.dimensions.into(),
+                ..self.swapchain.create_info()
+            })
+            .context("failed to recreate swapchain")?;
+
+        self.swapchain = new_swapchain;
+
+        self.framebuffers = Vec::new();
+
+        self.framebuffers = helpers::get_framebuffers(
+            &new_images,
+            self.render_pass.clone(),
+            self.memory_allocator.clone(),
+        )
+        .context("recreating framebuffers")?;
+
+        if self.window_resized {
+            self.viewport.extent = self.dimensions.into();
+        }
+        self.window_resized = false;
+        Ok(())
     }
 }

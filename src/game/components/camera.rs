@@ -48,7 +48,7 @@ impl<'a> System<'a> for CameraSystem {
         let (resize_events, mut cameras) = data;
 
         let aspect = {
-            if resize_events.0.len() > 0 {
+            if !resize_events.0.is_empty() {
                 Some(resize_events.0[0].width as f32 / resize_events.0[0].height as f32)
             } else {
                 None
