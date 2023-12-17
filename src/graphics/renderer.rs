@@ -19,7 +19,8 @@ use vulkano::{
         SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, PersistentDescriptorSet,
+        WriteDescriptorSet,
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
@@ -283,7 +284,18 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) -> anyhow::Result<()> {
-        if self.window_resized || self.need_swapchain_recreation {
+        let resize_swapchain = span!(Level::INFO, "resizing swapchain").entered();
+
+        let f = &mut self.fences[self.previous_fence_i as usize].as_mut();
+        match f {
+            Some(f) => f.cleanup_finished(),
+            None => {}
+        };
+
+        let is_zero = self.dimensions.height == 0 || self.dimensions.width == 0;
+
+        if (self.window_resized || self.need_swapchain_recreation) && !is_zero {
+            event!(Level::INFO, "recreating swapchain");
             self.need_swapchain_recreation = false;
 
             let (new_swapchain, new_images) = self
@@ -296,6 +308,8 @@ impl Renderer {
 
             self.swapchain = new_swapchain;
 
+            self.framebuffers = Vec::new();
+
             self.framebuffers = helpers::get_framebuffers(
                 &new_images,
                 self.render_pass.clone(),
@@ -305,18 +319,12 @@ impl Renderer {
 
             if self.window_resized {
                 self.viewport.extent = self.dimensions.into();
-
-                let new_pipeline = helpers::get_pipeline(
-                    self.device.clone(),
-                    self.vs.clone(),
-                    self.fs.clone(),
-                    self.render_pass.clone(),
-                    self.viewport.clone(),
-                )?;
-                self.pipeline = new_pipeline;
             }
+            self.window_resized = false;
         }
+        resize_swapchain.exit();
 
+        let acquire_image = span!(Level::INFO, "acquiring swapchain image").entered();
         let (image_i, suboptimal, acquire_future) =
             match swapchain::acquire_next_image(self.swapchain.clone(), None)
                 .map_err(Validated::unwrap)
@@ -332,7 +340,9 @@ impl Renderer {
         if suboptimal {
             self.need_swapchain_recreation = true;
         }
+        acquire_image.exit();
 
+        let fence_wait = span!(Level::INFO, "awaiting/recreating fence").entered();
         // wait for the fence related to this image to finish (normally this would be the oldest fence)
         if let Some(image_fence) = &self.fences[image_i as usize] {
             image_fence.wait(None)?;
@@ -348,7 +358,9 @@ impl Renderer {
             // Use the existing FenceSignalFuture
             Some(fence) => fence.boxed(),
         };
+        fence_wait.exit();
 
+        let update_uniforms = span!(Level::INFO, "update_uniforms").entered();
         let (projection, view) = self.camera.calculate_matrices();
 
         // Update Per Frame buffers here
@@ -356,12 +368,13 @@ impl Renderer {
             view: view.into(),
             proj: projection.into(),
         };
+        update_uniforms.exit();
 
-        event!(Level::INFO, "About to record command buffer");
+        event!(Level::INFO, "objects: {}", self.object_data.len());
 
         let command_buffer = self.record_command_buffer(image_i, &self.meshes)?;
 
-        self.object_data.clear();
+        self.object_data = Vec::new();
 
         let span = span!(Level::INFO, "present").entered();
         let future = previous_future
@@ -412,34 +425,37 @@ impl Renderer {
             CommandBufferUsage::MultipleSubmit,
         )?;
 
-        let object_data_buffer_set = {
-            let object_data_buffer = self
-                .buffer_allocator
-                .allocate_slice(self.object_data.len() as _)?;
-            object_data_buffer
-                .write()?
-                .copy_from_slice(&self.object_data);
-            PersistentDescriptorSet::new(
-                &self.descriptor_set_allocator,
-                self.pipeline.layout().set_layouts()[1].clone(),
-                [WriteDescriptorSet::buffer(0, object_data_buffer.clone())],
-                [],
-            )
-            .context("Creating Object Data Descriptor Set")?
-        };
+        let object_buffer_span = span!(Level::INFO, "update object buffer").entered();
+        let object_data_buffer = self
+            .buffer_allocator
+            .allocate_slice(self.object_data.len() as _)?;
+        object_data_buffer
+            .write()?
+            .copy_from_slice(&self.object_data);
+        object_buffer_span.exit();
 
-        let uniform_buffer_set = {
-            PersistentDescriptorSet::new(
-                &self.descriptor_set_allocator,
-                self.pipeline.layout().set_layouts()[0].clone(),
-                [WriteDescriptorSet::buffer(
-                    0,
-                    self.uniform_buffers[index as usize].clone(),
-                )],
-                [],
-            )
-            .context("creating uniform buffer descriptor set")?
-        };
+        let span_ds = span!(Level::INFO, "create object descriptor set").entered();
+        let object_data_buffer_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
+            self.pipeline.layout().set_layouts()[1].clone(),
+            [WriteDescriptorSet::buffer(0, object_data_buffer)],
+            [],
+        )
+        .context("Creating Object Data Descriptor Set")?;
+        span_ds.exit();
+
+        let uniform_set = span!(Level::INFO, "create uniform descriptor set").entered();
+        let uniform_buffer_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
+            self.pipeline.layout().set_layouts()[0].clone(),
+            [WriteDescriptorSet::buffer(
+                0,
+                self.uniform_buffers[index as usize].clone(),
+            )],
+            [],
+        )
+        .context("creating uniform buffer descriptor set")?;
+        uniform_set.exit();
 
         builder
             .begin_render_pass(
@@ -452,6 +468,7 @@ impl Renderer {
                     ..Default::default()
                 },
             )?
+            .set_viewport(0, [self.viewport.clone()].into_iter().collect())?
             .bind_pipeline_graphics(self.pipeline.clone())?
             .bind_descriptor_sets(
                 vulkano::pipeline::PipelineBindPoint::Graphics,

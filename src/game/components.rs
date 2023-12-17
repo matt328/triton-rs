@@ -3,6 +3,7 @@ use cgmath::{Deg, Matrix4, Quaternion, Rotation3, SquareMatrix, Vector3};
 
 use log::{error, info};
 use specs::{Component, Read, ReadStorage, System, VecStorage, Write, WriteStorage};
+use tracing::{event, Level};
 use vulkano::buffer::BufferContents;
 use winit::dpi::PhysicalSize;
 
@@ -70,7 +71,9 @@ impl<'a> System<'a> for RenderSystem {
         let (blending_factor, mut resize_events, transforms, meshes) = data;
 
         if resize_events.0.len() > 0 {
+            event!(Level::INFO, "render system resize event");
             self.renderer.window_resized(resize_events.0[0]);
+
             resize_events.0.clear();
         }
         // Consider accumulating all the renderables into a list here
