@@ -6,14 +6,24 @@ layout(location = 1) in vec3 color;
 layout(location = 0) out vec3 outColor;
 
 layout(set = 0, binding = 0) uniform FrameData {
-  mat4 model;
   mat4 view;
   mat4 proj;
 }
-uniforms;
+frameData;
+
+struct ObjectData {
+  mat4 model;
+};
+
+// all object matrices
+layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer {
+  ObjectData objects[];
+}
+objectBuffer;
 
 void main() {
-  mat4 modelview = uniforms.view * uniforms.model;
+  mat4 modelMatrix = objectBuffer.objects[gl_BaseInstance].model;
+  mat4 modelview = frameData.view * modelMatrix;
   outColor = color;
-  gl_Position = uniforms.proj * modelview * vec4(position, 1.0);
+  gl_Position = frameData.proj * modelview * vec4(position, 1.0);
 }

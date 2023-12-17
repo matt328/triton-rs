@@ -1,5 +1,7 @@
-use cgmath::{Deg, Quaternion, Rotation3, Vector3};
+use bytemuck::Pod;
+use cgmath::{Deg, Matrix4, Quaternion, Rotation3, SquareMatrix, Vector3};
 
+use log::{error, info};
 use specs::{Component, Read, ReadStorage, System, VecStorage, Write, WriteStorage};
 use vulkano::buffer::BufferContents;
 use winit::dpi::PhysicalSize;
@@ -19,6 +21,25 @@ pub struct Transform {
     pub position: [f32; 3],
     pub rotation: [f32; 4],
     pub scale: [f32; 3],
+}
+
+impl Transform {
+    pub fn model(&self) -> Matrix4<f32> {
+        let scale_matrix =
+            Matrix4::from_nonuniform_scale(self.scale[0], self.scale[1], self.scale[2]);
+        let rotation_matrix = Matrix4::from(Quaternion::new(
+            self.rotation[0],
+            self.rotation[1],
+            self.rotation[2],
+            self.rotation[3],
+        ));
+        let translation_matrix = Matrix4::from_translation(Vector3::new(
+            self.position[0],
+            self.position[1],
+            self.position[2],
+        ));
+        translation_matrix * rotation_matrix * scale_matrix
+    }
 }
 
 #[derive(Default)]
@@ -52,13 +73,21 @@ impl<'a> System<'a> for RenderSystem {
             self.renderer.window_resized(resize_events.0[0]);
             resize_events.0.clear();
         }
+        // Consider accumulating all the renderables into a list here
+        // and just passing them to renderer.draw()
+        // profile and see if that even has an impact
         use specs::Join;
         for (transform, mesh) in (&transforms, &meshes).join() {
-            // Apply blending_factor to Transforms before passing
-            // them to renderer
-            self.renderer.enqueue_mesh(mesh.mesh_id, transform.clone());
+            // Apply blending_factor to Transforms before passing them to renderer
+            self.renderer.enqueue_mesh(mesh.mesh_id, *transform);
         }
-        // self.renderer.draw();
+        let result: anyhow::Result<()> = self.renderer.draw();
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Error drawing: {:#?}", e);
+            }
+        }
     }
 }
 

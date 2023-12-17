@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use cgmath::{Quaternion, Vector3, Zero};
-use log::info;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
@@ -66,6 +64,11 @@ impl<'a, 'b> Context<'a, 'b> {
             })
             .with(Renderable { mesh_id })
             .build();
+
+        world
+            .write_resource::<ResizeEvents>()
+            .0
+            .push(window.inner_size());
 
         Ok(Context {
             camera,

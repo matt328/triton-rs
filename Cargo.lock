@@ -1739,6 +1739,7 @@ name = "triton"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "cgmath",
  "log",
  "log4rs",
