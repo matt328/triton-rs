@@ -7,13 +7,17 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::graphics::{Renderer, CUBE_INDICES, CUBE_VERTICES};
 
-use super::components::{
-    render::{RenderSystem, Renderable},
-    transform::{Transform, TransformSystem},
-    ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
+use super::{
+    components::{
+        render::{RenderSystem, Renderable},
+        transform::{Transform, TransformSystem},
+        ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
+    },
+    InputSystem, SystemEvent,
 };
 
 pub struct Context<'a, 'b> {
+    input_system: InputSystem,
     world: World,
     fixed_update_dispatcher: Dispatcher<'a, 'b>,
     render_dispatcher: Dispatcher<'a, 'b>,
@@ -81,11 +85,23 @@ impl<'a, 'b> Context<'a, 'b> {
             .0
             .push(window.inner_size());
 
+        let input_system = InputSystem::new();
+
         Ok(Context {
             world,
             fixed_update_dispatcher,
             render_dispatcher,
+            input_system,
         })
+    }
+
+    pub fn process_system_event(&mut self, system_event: SystemEvent) {
+        self.input_system.process_system_event(system_event);
+    }
+
+    pub fn pre_update(&mut self) {
+        // Update input system
+        // place registered states in a Resource
     }
 
     pub fn update(&mut self) {

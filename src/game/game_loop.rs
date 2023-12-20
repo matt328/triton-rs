@@ -1,6 +1,5 @@
-use std::{sync::Arc, time::Instant};
-
 use log::info;
+use std::{sync::Arc, time::Instant};
 use tracing::{event, span, Level};
 use vulkano::instance::InstanceExtensions;
 use winit::{dpi::PhysicalSize, window::Window};
@@ -9,6 +8,8 @@ use winit::{dpi::PhysicalSize, window::Window};
 use tracing_tracy::client::frame_mark;
 
 use crate::game::context::Context;
+
+use super::SystemEvent;
 
 pub struct GameLoop<'a, 'b> {
     previous_instant: Instant,
@@ -43,6 +44,10 @@ impl<'a, 'b> GameLoop<'a, 'b> {
         self.context.window_resized(new_size);
     }
 
+    pub fn process_system_event(&mut self, system_event: SystemEvent) {
+        self.context.process_system_event(system_event);
+    }
+
     /// Implements fixed timestep game loop https://gafferongames.com/post/fix_your_timestep/
     pub fn update(&mut self) -> anyhow::Result<()> {
         let _update = span!(Level::INFO, "game update", self.accumulated_time).entered();
@@ -63,6 +68,8 @@ impl<'a, 'b> GameLoop<'a, 'b> {
         self.accumulated_time += elapsed;
 
         let update_loop = span!(Level::INFO, "update loop").entered();
+
+        self.context.pre_update();
 
         while self.accumulated_time >= FIXED_TIME_STEP {
             event!(Level::INFO, "calling context.upadte()");
