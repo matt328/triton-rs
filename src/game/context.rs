@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use log::info;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
@@ -13,7 +14,7 @@ use super::{
         transform::{Transform, TransformSystem},
         ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
     },
-    InputSystem, SystemEvent,
+    input::{ActionDescriptor, ActionKind, ActionMap, InputSystem, Source, SystemEvent, SystemKey},
 };
 
 pub struct Context<'a, 'b> {
@@ -85,7 +86,19 @@ impl<'a, 'b> Context<'a, 'b> {
             .0
             .push(window.inner_size());
 
-        let input_system = InputSystem::new();
+        let walk_forward_action = "walk_forward";
+
+        let input_system = InputSystem::new()
+            .add_action(
+                walk_forward_action,
+                ActionDescriptor {
+                    kind: ActionKind::Button,
+                },
+            )
+            .add_action_map(
+                "main",
+                ActionMap::new().bind(Source::Keyboard(SystemKey::W), walk_forward_action),
+            );
 
         Ok(Context {
             world,
@@ -100,12 +113,18 @@ impl<'a, 'b> Context<'a, 'b> {
     }
 
     pub fn pre_update(&mut self) {
+        self.input_system.update();
         // Update input system
         // place registered states in a Resource
     }
 
     pub fn update(&mut self) {
         let _span = span!(Level::INFO, "fixed_update").entered();
+
+        if let Some(a) = self.input_system.get_action_state("walk_forward") {
+            info!("{a:?}");
+        }
+
         self.fixed_update_dispatcher.dispatch(&self.world);
     }
 

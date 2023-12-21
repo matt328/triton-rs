@@ -9,7 +9,7 @@ use tracing_tracy::client::frame_mark;
 
 use crate::game::context::Context;
 
-use super::SystemEvent;
+use super::input::SystemEvent;
 
 pub struct GameLoop<'a, 'b> {
     previous_instant: Instant,
