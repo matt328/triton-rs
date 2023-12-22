@@ -1,4 +1,7 @@
-use cgmath::{perspective, Deg, Matrix4, Point3, Vector3};
+use cgmath::{
+    perspective, Deg, EuclideanSpace, Euler, Matrix4, Point3, Quaternion, Rad, Rotation, Vector3,
+    Zero,
+};
 use specs::{Component, Read, System, VecStorage, WriteStorage};
 use tracing::{event, Level};
 
@@ -13,16 +16,20 @@ pub struct Camera {
     pub aspect_ratio: f32,
     pub near: f32,
     pub far: f32,
-    pub eye: Point3<f32>,
-    pub center: Point3<f32>,
-    pub up: Vector3<f32>,
+
+    pub position: Vector3<f32>,
+    pub rotation: Quaternion<f32>,
 }
 
 impl Camera {
     pub fn calculate_matrices(&self) -> (Matrix4<f32>, Matrix4<f32>) {
         (
             perspective(self.fov, self.aspect_ratio, self.near, self.far),
-            Matrix4::look_at_rh(self.eye, self.center, self.up),
+            Matrix4::look_at_lh(
+                Point3::from_vec(self.position),
+                Point3::from_vec(self.position) + self.rotation.rotate_vector(Vector3::unit_z()),
+                Vector3::unit_y(),
+            ),
         )
     }
 }
@@ -34,9 +41,8 @@ impl Default for Camera {
             aspect_ratio: 800.0 / 600.0,
             near: 0.1,
             far: 100.0,
-            eye: Point3::new(3.0, -3.0, -10.0),
-            center: Point3::new(0.0, 0.0, 0.0),
-            up: Vector3::new(0.0, 1.0, 0.0),
+            position: Vector3::new(3.0, 3.0, 10.0),
+            rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
         }
     }
 }
@@ -61,13 +67,44 @@ impl<'a> System<'a> for CameraSystem {
             }
         };
 
-        if let Some(state) = input_state.0.get("look_vertical_action") {
-            log::info!("camera system {state:?}");
-        }
+        let delta_x = input_state
+            .0
+            .get("look_vertical_action")
+            .and_then(|dx| dx.value);
+
+        let delta_y = input_state
+            .0
+            .get("look_horizontal_action")
+            .and_then(|dy| dy.value);
 
         use specs::Join;
 
         for camera in (&mut cameras).join() {
+            let yaw_quat = {
+                if let Some(y) = delta_y {
+                    Quaternion::from(Euler {
+                        x: Rad(0.0),
+                        y: Rad(-y as f32 * 0.01),
+                        z: Rad(0.0),
+                    })
+                } else {
+                    Quaternion::new(1.0, 0.0, 0.0, 0.0)
+                }
+            };
+
+            let pitch_quat: Quaternion<f32> = {
+                if let Some(x) = delta_x {
+                    Quaternion::from(Euler {
+                        x: Rad(-x as f32 * 0.01),
+                        y: Rad(0.0),
+                        z: Rad(0.0),
+                    })
+                } else {
+                    Quaternion::new(1.0, 0.0, 0.0, 0.0)
+                }
+            };
+
+            camera.rotation = (yaw_quat * pitch_quat) * camera.rotation;
             if let Some(value) = aspect {
                 event!(Level::INFO, "aspect ratio: {}", value);
                 camera.aspect_ratio = value;
