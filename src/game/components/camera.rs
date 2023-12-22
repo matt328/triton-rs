@@ -19,13 +19,14 @@ pub struct Camera {
 
     pub position: Vector3<f32>,
     pub rotation: Quaternion<f32>,
+    pub velocity: Vector3<f32>,
 }
 
 impl Camera {
     pub fn calculate_matrices(&self) -> (Matrix4<f32>, Matrix4<f32>) {
         (
             perspective(self.fov, self.aspect_ratio, self.near, self.far),
-            Matrix4::look_at_lh(
+            Matrix4::look_at_rh(
                 Point3::from_vec(self.position),
                 Point3::from_vec(self.position) + self.rotation.rotate_vector(Vector3::unit_z()),
                 Vector3::unit_y(),
@@ -43,6 +44,7 @@ impl Default for Camera {
             far: 100.0,
             position: Vector3::new(3.0, 3.0, 10.0),
             rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
+            velocity: Vector3::zero(),
         }
     }
 }
@@ -80,7 +82,7 @@ impl<'a> System<'a> for CameraSystem {
         use specs::Join;
 
         for camera in (&mut cameras).join() {
-            let yaw_quat = {
+            let pitch_quat = {
                 if let Some(y) = delta_y {
                     Quaternion::from(Euler {
                         x: Rad(0.0),
@@ -92,10 +94,10 @@ impl<'a> System<'a> for CameraSystem {
                 }
             };
 
-            let pitch_quat: Quaternion<f32> = {
+            let yaw_quat: Quaternion<f32> = {
                 if let Some(x) = delta_x {
                     Quaternion::from(Euler {
-                        x: Rad(-x as f32 * 0.01),
+                        x: Rad(x as f32 * 0.01),
                         y: Rad(0.0),
                         z: Rad(0.0),
                     })
@@ -105,10 +107,24 @@ impl<'a> System<'a> for CameraSystem {
             };
 
             camera.rotation = (yaw_quat * pitch_quat) * camera.rotation;
+
+            if let Some(_) = input_state.0.get("walk_forward") {
+                let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, -1.0));
+                camera.velocity += direction * 0.5;
+            }
+
+            if let Some(_) = input_state.0.get("walk_backward") {
+                let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                camera.velocity += direction * 0.5;
+            }
+
             if let Some(value) = aspect {
                 event!(Level::INFO, "aspect ratio: {}", value);
                 camera.aspect_ratio = value;
             }
+
+            camera.position += camera.velocity * 0.16;
+            camera.velocity = Vector3::zero();
         }
     }
 }

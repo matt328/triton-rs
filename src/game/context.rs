@@ -4,7 +4,7 @@ use log::info;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
-use winit::{dpi::PhysicalSize, window::Window};
+use winit::{dpi::PhysicalSize, event::Event, window::Window};
 
 use crate::graphics::{Renderer, CUBE_INDICES, CUBE_VERTICES};
 
@@ -94,12 +94,19 @@ impl<'a, 'b> Context<'a, 'b> {
             .push(window.inner_size());
 
         let walk_forward_action = "walk_forward";
+        let walk_backward_action = "walk_backward";
         let look_vertical_action = "look_vertical_action";
         let look_horizontal_action = "look_horizontal_action";
 
         let input_system = InputSystem::new()
             .add_action(
                 walk_forward_action,
+                ActionDescriptor {
+                    kind: ActionKind::Button,
+                },
+            )
+            .add_action(
+                walk_backward_action,
                 ActionDescriptor {
                     kind: ActionKind::Button,
                 },
@@ -120,6 +127,9 @@ impl<'a, 'b> Context<'a, 'b> {
                 "main",
                 ActionMap::new()
                     .bind(Source::Keyboard(SystemKey::W), walk_forward_action)
+                    .bind(Source::Keyboard(SystemKey::ArrowUp), walk_forward_action)
+                    .bind(Source::Keyboard(SystemKey::S), walk_backward_action)
+                    .bind(Source::Keyboard(SystemKey::ArrowDown), walk_backward_action)
                     .bind(
                         Source::Mouse(MouseSource::Move(MouseAxis::MouseY)),
                         look_vertical_action,
@@ -136,6 +146,10 @@ impl<'a, 'b> Context<'a, 'b> {
             render_dispatcher,
             input_system,
         })
+    }
+
+    pub fn process_winit_event(&mut self, event: &Event<()>) -> bool {
+        self.input_system.process_winit_event(event)
     }
 
     pub fn process_system_event(&mut self, system_event: SystemEvent) {

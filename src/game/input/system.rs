@@ -18,6 +18,8 @@
 use std::collections::HashMap;
 
 use anyhow::anyhow;
+use winit::event::Event;
+use winit_input_helper::WinitInputHelper;
 
 use crate::game::input::{sources::ActionState, MouseAxis};
 
@@ -87,6 +89,7 @@ pub struct InputSystem {
     current_action_map: String,
     action_state_map: HashMap<String, ActionState>,
     action_state_cache: HashMap<String, ActionState>,
+    input_helper: WinitInputHelper,
 }
 
 impl InputSystem {
@@ -97,6 +100,7 @@ impl InputSystem {
             current_action_map: "".to_string(),
             action_state_map: HashMap::new(),
             action_state_cache: HashMap::new(),
+            input_helper: WinitInputHelper::new(),
         }
     }
 
@@ -115,12 +119,19 @@ impl InputSystem {
     /// Clears last frame's state and queries gamepad state and adds actions to the state map.  Call
     /// this at the beginning of a frame and call process_system_event after this.
     pub fn update(&mut self) {
+        /*TODO: incorporate winit_input_helper
+
+        */
         self.action_state_map.clear();
 
         for (key, value) in self.action_state_cache.drain() {
             self.action_state_map.insert(key, value);
         }
         // TODO Add gamepad items into action_state_map
+    }
+
+    pub fn process_winit_event(&mut self, event: &Event<()>) -> bool {
+        self.input_helper.update(event)
     }
 
     pub fn process_system_event(&mut self, system_event: SystemEvent) {

@@ -2,7 +2,7 @@ use log::info;
 use std::{sync::Arc, time::Instant};
 use tracing::{event, span, Level};
 use vulkano::instance::InstanceExtensions;
-use winit::{dpi::PhysicalSize, window::Window};
+use winit::{dpi::PhysicalSize, event::Event, window::Window};
 
 #[cfg(feature = "tracing")]
 use tracing_tracy::client::frame_mark;
@@ -42,6 +42,10 @@ impl<'a, 'b> GameLoop<'a, 'b> {
 
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         self.context.window_resized(new_size);
+    }
+
+    pub fn process_winit_event(&mut self, event: &Event<()>) -> bool {
+        self.context.process_winit_event(event)
     }
 
     pub fn process_system_event(&mut self, system_event: SystemEvent) {

@@ -1751,6 +1751,7 @@ dependencies = [
  "vulkano",
  "vulkano-shaders",
  "winit",
+ "winit_input_helper",
 ]
 
 [[package]]
@@ -2327,6 +2328,15 @@ dependencies = [
  "x11-dl",
  "x11rb",
  "xkbcommon-dl",
+]
+
+[[package]]
+name = "winit_input_helper"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce9b125e561cd7bc59323760750178c2654a97c3d87d1d8a7a38f545e071d42a"
+dependencies = [
+ "winit",
 ]
 
 [[package]]
