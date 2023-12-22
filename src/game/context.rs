@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use log::info;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
@@ -14,8 +14,14 @@ use super::{
         transform::{Transform, TransformSystem},
         ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
     },
-    input::{ActionDescriptor, ActionKind, ActionMap, InputSystem, Source, SystemEvent, SystemKey},
+    input::{
+        ActionDescriptor, ActionKind, ActionMap, ActionState, InputSystem, MouseAxis, MouseSource,
+        Source, SystemEvent, SystemKey,
+    },
 };
+
+#[derive(Default)]
+pub struct InputStateResource(pub HashMap<String, ActionState>);
 
 pub struct Context<'a, 'b> {
     input_system: InputSystem,
@@ -36,6 +42,7 @@ impl<'a, 'b> Context<'a, 'b> {
         let mut world = World::new();
 
         world.insert(ResizeEvents(Vec::new()));
+        world.insert(InputStateResource(HashMap::new()));
 
         let mesh_id = renderer.create_mesh(CUBE_VERTICES.into(), CUBE_INDICES.into())?;
 
@@ -87,6 +94,8 @@ impl<'a, 'b> Context<'a, 'b> {
             .push(window.inner_size());
 
         let walk_forward_action = "walk_forward";
+        let look_vertical_action = "look_vertical_action";
+        let look_horizontal_action = "look_horizontal_action";
 
         let input_system = InputSystem::new()
             .add_action(
@@ -95,9 +104,30 @@ impl<'a, 'b> Context<'a, 'b> {
                     kind: ActionKind::Button,
                 },
             )
+            .add_action(
+                look_vertical_action,
+                ActionDescriptor {
+                    kind: ActionKind::Axis,
+                },
+            )
+            .add_action(
+                look_horizontal_action,
+                ActionDescriptor {
+                    kind: ActionKind::Axis,
+                },
+            )
             .add_action_map(
                 "main",
-                ActionMap::new().bind(Source::Keyboard(SystemKey::W), walk_forward_action),
+                ActionMap::new()
+                    .bind(Source::Keyboard(SystemKey::W), walk_forward_action)
+                    .bind(
+                        Source::Mouse(MouseSource::Move(MouseAxis::MouseY)),
+                        look_vertical_action,
+                    )
+                    .bind(
+                        Source::Mouse(MouseSource::Move(MouseAxis::MouseX)),
+                        look_horizontal_action,
+                    ),
             );
 
         Ok(Context {
@@ -114,17 +144,13 @@ impl<'a, 'b> Context<'a, 'b> {
 
     pub fn pre_update(&mut self) {
         self.input_system.update();
-        // Update input system
-        // place registered states in a Resource
+        self.world.insert(InputStateResource(
+            self.input_system.get_action_state_map().clone(),
+        ));
     }
 
     pub fn update(&mut self) {
         let _span = span!(Level::INFO, "fixed_update").entered();
-
-        if let Some(a) = self.input_system.get_action_state("walk_forward") {
-            info!("{a:?}");
-        }
-
         self.fixed_update_dispatcher.dispatch(&self.world);
     }
 

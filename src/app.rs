@@ -12,7 +12,7 @@ use winit::{
 };
 
 use crate::game::input::{
-    SystemEvent, SystemEventKind, SystemEventState, SystemKey, SystemMouseButton,
+    MouseAxis, SystemEvent, SystemEventKind, SystemEventState, SystemKey, SystemMouseButton,
 };
 use crate::game::GameLoop;
 
@@ -135,11 +135,15 @@ impl<'a, 'b> App<'a, 'b> {
                     },
 
                     Event::DeviceEvent { event, .. } => match event {
-                        DeviceEvent::MouseMotion { delta } => {
+                        DeviceEvent::Motion { axis, value } => {
                             if self.mouse_captured {
                                 let system_event = SystemEvent {
-                                    kind: SystemEventKind::MouseMotion,
-                                    value: Some(delta),
+                                    kind: if axis == 0 {
+                                        SystemEventKind::MouseMotion(MouseAxis::MouseX)
+                                    } else {
+                                        SystemEventKind::MouseMotion(MouseAxis::MouseY)
+                                    },
+                                    value: Some(value),
                                     ..Default::default()
                                 };
                                 self.game.process_system_event(system_event);

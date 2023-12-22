@@ -4,7 +4,7 @@ pub use system::{
 };
 
 pub use map::ActionMap;
-pub use sources::{ActionDescriptor, ActionKind, Source};
+pub use sources::{ActionDescriptor, ActionKind, ActionState, MouseAxis, MouseSource, Source};
 
 mod map;
 mod sources;

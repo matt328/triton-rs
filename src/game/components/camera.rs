@@ -2,6 +2,8 @@ use cgmath::{perspective, Deg, Matrix4, Point3, Vector3};
 use specs::{Component, Read, System, VecStorage, WriteStorage};
 use tracing::{event, Level};
 
+use crate::game::context::InputStateResource;
+
 use super::ResizeEvents;
 
 #[derive(Component, Debug, Clone, Copy)]
@@ -42,10 +44,14 @@ impl Default for Camera {
 pub struct CameraSystem;
 
 impl<'a> System<'a> for CameraSystem {
-    type SystemData = (Read<'a, ResizeEvents>, WriteStorage<'a, Camera>);
+    type SystemData = (
+        Read<'a, ResizeEvents>,
+        Read<'a, InputStateResource>,
+        WriteStorage<'a, Camera>,
+    );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (resize_events, mut cameras) = data;
+        let (resize_events, input_state, mut cameras) = data;
 
         let aspect = {
             if !resize_events.0.is_empty() {
@@ -54,6 +60,10 @@ impl<'a> System<'a> for CameraSystem {
                 None
             }
         };
+
+        if let Some(state) = input_state.0.get("look_vertical_action") {
+            log::info!("camera system {state:?}");
+        }
 
         use specs::Join;
 

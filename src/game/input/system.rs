@@ -18,9 +18,8 @@
 use std::collections::HashMap;
 
 use anyhow::anyhow;
-use log::info;
 
-use crate::game::input::sources::ActionState;
+use crate::game::input::{sources::ActionState, MouseAxis};
 
 use super::{
     map::ActionMap,
@@ -30,7 +29,7 @@ use super::{
 #[derive(Debug, Copy, Clone)]
 pub enum SystemEventKind {
     Key,
-    MouseMotion,
+    MouseMotion(MouseAxis),
     MouseButton,
     MouseScroll,
 }
@@ -45,7 +44,7 @@ pub enum SystemEventState {
 pub struct SystemEvent {
     pub kind: SystemEventKind,
     pub state: Option<SystemEventState>,
-    pub value: Option<(f64, f64)>,
+    pub value: Option<f64>,
     pub key: Option<Key>,
     pub mouse_button: Option<MouseButton>,
     pub repeated: bool,
@@ -71,6 +70,12 @@ impl TryInto<Source> for SystemEvent {
         // Create a Source that matches this SystemEvent
         match self.kind {
             SystemEventKind::Key => Ok(Source::Keyboard(self.key.unwrap())),
+            SystemEventKind::MouseMotion(MouseAxis::MouseX) => {
+                Ok(Source::Mouse(super::MouseSource::Move(MouseAxis::MouseX)))
+            }
+            SystemEventKind::MouseMotion(MouseAxis::MouseY) => {
+                Ok(Source::Mouse(super::MouseSource::Move(MouseAxis::MouseY)))
+            }
             _ => Err("no".to_string()),
         }
     }
@@ -119,24 +124,33 @@ impl InputSystem {
     }
 
     pub fn process_system_event(&mut self, system_event: SystemEvent) {
-        info!("{system_event:?}");
         let kind = system_event.kind;
+        let value = system_event.value;
         if let Ok(source) = system_event.try_into() {
             if let Some(action_map) = self.action_map_map.get(&self.current_action_map) {
                 if let Some(action) = action_map.map.get(&source) {
                     match kind {
                         SystemEventKind::Key => {
-                            let name = action.to_string();
-                            let active = true;
-                            let active_state_changed_this_frame = false;
-                            let value: Option<(f64, f64)> = None;
-                            let action_state = ActionState {
-                                name: name.clone(),
-                                active,
-                                active_state_changed_this_frame,
-                                value,
-                            };
-                            self.action_state_cache.insert(name.clone(), action_state);
+                            self.action_state_cache.insert(
+                                action.to_string(),
+                                ActionState {
+                                    name: action.to_string(),
+                                    active: true,
+                                    active_state_changed_this_frame: false,
+                                    value: None,
+                                },
+                            );
+                        }
+                        SystemEventKind::MouseMotion(_) => {
+                            self.action_state_cache.insert(
+                                action.to_string(),
+                                ActionState {
+                                    name: action.to_string(),
+                                    active: true,
+                                    active_state_changed_this_frame: false,
+                                    value,
+                                },
+                            );
                         }
                         _ => {}
                     }
@@ -147,6 +161,10 @@ impl InputSystem {
 
     pub fn get_action_state(&self, action_name: &str) -> Option<&ActionState> {
         self.action_state_map.get(action_name)
+    }
+
+    pub fn get_action_state_map(&self) -> &HashMap<String, ActionState> {
+        &self.action_state_map
     }
 
     pub fn activate_action_map(mut self, name: &str) -> anyhow::Result<()> {
