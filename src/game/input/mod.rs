@@ -3,7 +3,9 @@ pub use system::{
 };
 
 pub use map::ActionMap;
-pub use sources::{ActionDescriptor, ActionKind, ActionState, MouseAxis, MouseSource, Source};
+pub use sources::{
+    ActionDescriptor, ActionKind, ActionState, GamepadSource, MouseAxis, MouseSource, Source,
+};
 
 mod map;
 mod sources;

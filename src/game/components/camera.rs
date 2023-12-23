@@ -110,9 +110,9 @@ impl<'a> System<'a> for CameraSystem {
 
             camera.rotation = (yaw_quat * pitch_quat) * camera.rotation;
 
-            if input_state.0.get("walk_forward").is_some() {
+            if let Some(state) = input_state.0.get("walk_forward") {
                 let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-                camera.velocity += direction * 0.5;
+                camera.velocity += direction * state.value.unwrap_or(0.5);
             }
 
             if input_state.0.get("walk_backward").is_some() {

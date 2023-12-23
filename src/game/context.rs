@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use gilrs::Axis;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
@@ -14,8 +15,8 @@ use super::{
         ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
     },
     input::{
-        ActionDescriptor, ActionKind, ActionMap, ActionState, InputSystem, MouseAxis, MouseSource,
-        Source, SystemEvent,
+        ActionDescriptor, ActionKind, ActionMap, ActionState, GamepadSource, InputSystem,
+        MouseAxis, MouseSource, Source, SystemEvent,
     },
 };
 
@@ -155,6 +156,10 @@ impl<'a, 'b> Context<'a, 'b> {
                 ActionMap::new()
                     .bind(Source::Keyboard(KeyCode::KeyW), walk_forward_action)
                     .bind(Source::Keyboard(KeyCode::ArrowUp), walk_forward_action)
+                    .bind(
+                        Source::Gamepad(GamepadSource::Axis(Axis::LeftStickY)),
+                        walk_forward_action,
+                    )
                     .bind(Source::Keyboard(KeyCode::KeyS), walk_backward_action)
                     .bind(Source::Keyboard(KeyCode::ArrowDown), walk_backward_action)
                     .bind(Source::Keyboard(KeyCode::KeyA), strafe_left_action)

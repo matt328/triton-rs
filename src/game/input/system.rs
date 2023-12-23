@@ -18,6 +18,7 @@
 use std::collections::HashMap;
 
 use anyhow::anyhow;
+use gilrs::{Axis, GamepadId, Gilrs};
 use winit::{event::Event, keyboard::KeyCode};
 use winit_input_helper::WinitInputHelper;
 
@@ -26,7 +27,7 @@ use crate::game::input::{sources::ActionState, MouseAxis};
 use super::{
     map::ActionMap,
     sources::{ActionDescriptor, Source},
-    MouseSource,
+    GamepadSource, MouseSource,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -89,8 +90,9 @@ pub struct InputSystem {
     action_map_map: HashMap<String, ActionMap>,
     current_action_map: String,
     action_state_map: HashMap<String, ActionState>,
-    action_state_cache: HashMap<String, ActionState>,
     input_helper: WinitInputHelper,
+    gilrs: Gilrs,
+    current_gamepad: Option<GamepadId>,
 }
 
 impl Default for InputSystem {
@@ -106,8 +108,9 @@ impl InputSystem {
             action_descriptor_map: HashMap::new(),
             current_action_map: "".to_string(),
             action_state_map: HashMap::new(),
-            action_state_cache: HashMap::new(),
             input_helper: WinitInputHelper::new(),
+            gilrs: Gilrs::new().unwrap(),
+            current_gamepad: None,
         }
     }
 
@@ -128,11 +131,35 @@ impl InputSystem {
     }
 
     pub fn update_gamepads(&mut self) {
-        /*
-           Loop over all mapped sources that come from gamepads
-           grab the gamepad input's state and translate it into an
-           ActionState
-        */
+        while let Some(event) = self.gilrs.next_event() {
+            if self.current_gamepad.is_none() {
+                self.current_gamepad = Some(event.id);
+            }
+        }
+
+        if let Some(gamepad_id) = self.current_gamepad {
+            let gamepad = self.gilrs.gamepad(gamepad_id);
+            if let Some(action_map) = self.action_map_map.get(&self.current_action_map) {
+                for (source, name) in action_map.map.iter() {
+                    match source {
+                        Source::Gamepad(GamepadSource::Axis(Axis::LeftStickY)) => {
+                            let y_axis_value =
+                                gamepad.axis_data(Axis::LeftStickY).map(|a| a.value());
+                            self.action_state_map.insert(
+                                name.to_string(),
+                                ActionState {
+                                    name: name.to_string(),
+                                    active: true,
+                                    active_state_changed_this_frame: false,
+                                    value: y_axis_value,
+                                },
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
     }
 
     pub fn process_winit_event(&mut self, event: &Event<()>, mouse_captured: bool) -> bool {
@@ -165,7 +192,7 @@ impl InputSystem {
                                                 name: name.to_string(),
                                                 active: true,
                                                 active_state_changed_this_frame: false,
-                                                value: Some(mouse_diff.0 as f64),
+                                                value: Some(mouse_diff.0),
                                             },
                                         );
                                     }
@@ -176,7 +203,7 @@ impl InputSystem {
                                                 name: name.to_string(),
                                                 active: true,
                                                 active_state_changed_this_frame: false,
-                                                value: Some(mouse_diff.1 as f64),
+                                                value: Some(mouse_diff.1),
                                             },
                                         );
                                     }
@@ -189,42 +216,6 @@ impl InputSystem {
             }
         }
         true
-    }
-
-    pub fn process_system_event(&mut self, system_event: SystemEvent) {
-        let kind = system_event.kind;
-        let value = system_event.value;
-        if let Ok(source) = system_event.try_into() {
-            if let Some(action_map) = self.action_map_map.get(&self.current_action_map) {
-                if let Some(action) = action_map.map.get(&source) {
-                    match kind {
-                        SystemEventKind::Key => {
-                            self.action_state_cache.insert(
-                                action.to_string(),
-                                ActionState {
-                                    name: action.to_string(),
-                                    active: true,
-                                    active_state_changed_this_frame: false,
-                                    value: None,
-                                },
-                            );
-                        }
-                        SystemEventKind::MouseMotion(_) => {
-                            self.action_state_cache.insert(
-                                action.to_string(),
-                                ActionState {
-                                    name: action.to_string(),
-                                    active: true,
-                                    active_state_changed_this_frame: false,
-                                    value,
-                                },
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
     }
 
     pub fn get_action_state(&self, action_name: &str) -> Option<&ActionState> {

@@ -10,6 +10,7 @@ opt-level = 1
 anyhow = "1.0.70"
 bytemuck = "*"
 cgmath = { version = "0.18" }
+gilrs = { version = "0.10.4", default-features = false, features = ["xinput"] }
 log = "0.4.17"
 log4rs = "1.2.0"
 specs = { version = "0.20.0", features = ["specs-derive"] }

@@ -1,3 +1,4 @@
+use gilrs::{Axis, Button};
 use winit::keyboard::KeyCode;
 
 use super::SystemMouseButton;
@@ -6,6 +7,13 @@ use super::SystemMouseButton;
 pub enum Source {
     Keyboard(KeyCode),
     Mouse(MouseSource),
+    Gamepad(GamepadSource),
+}
+
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
+pub enum GamepadSource {
+    Axis(Axis),
+    Button(Button),
 }
 
 #[derive(Eq, Hash, PartialEq, Debug)]
@@ -25,7 +33,7 @@ pub struct ActionState {
     pub name: String,
     pub active: bool,
     pub active_state_changed_this_frame: bool,
-    pub value: Option<f64>,
+    pub value: Option<f32>,
 }
 
 pub enum ActionKind {
