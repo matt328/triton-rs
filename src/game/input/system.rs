@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use anyhow::anyhow;
-use winit::event::Event;
+use winit::{event::Event, keyboard::KeyCode};
 use winit_input_helper::WinitInputHelper;
 
 use crate::game::input::{sources::ActionState, MouseAxis};
@@ -26,6 +26,7 @@ use crate::game::input::{sources::ActionState, MouseAxis};
 use super::{
     map::ActionMap,
     sources::{ActionDescriptor, Source},
+    MouseSource,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -47,7 +48,7 @@ pub struct SystemEvent {
     pub kind: SystemEventKind,
     pub state: Option<SystemEventState>,
     pub value: Option<f64>,
-    pub key: Option<Key>,
+    pub key: Option<KeyCode>,
     pub mouse_button: Option<MouseButton>,
     pub repeated: bool,
 }
@@ -119,19 +120,64 @@ impl InputSystem {
     /// Clears last frame's state and queries gamepad state and adds actions to the state map.  Call
     /// this at the beginning of a frame and call process_system_event after this.
     pub fn update(&mut self) {
-        /*TODO: incorporate winit_input_helper
-
-        */
         self.action_state_map.clear();
-
-        for (key, value) in self.action_state_cache.drain() {
-            self.action_state_map.insert(key, value);
-        }
-        // TODO Add gamepad items into action_state_map
     }
 
-    pub fn process_winit_event(&mut self, event: &Event<()>) -> bool {
-        self.input_helper.update(event)
+    pub fn process_winit_event(&mut self, event: &Event<()>, mouse_captured: bool) -> bool {
+        if self.input_helper.update(event) {
+            if let Some(action_map) = self.action_map_map.get(&self.current_action_map) {
+                for (source, name) in action_map.map.iter() {
+                    match source {
+                        Source::Keyboard(keycode) => {
+                            if self.input_helper.key_held(*keycode) {
+                                self.action_state_map.insert(
+                                    name.to_string(),
+                                    ActionState {
+                                        name: name.to_string(),
+                                        active: true,
+                                        active_state_changed_this_frame: false,
+                                        value: None,
+                                    },
+                                );
+                            }
+                        }
+                        Source::Mouse(mouse_source) => match mouse_source {
+                            MouseSource::Move(axis) => {
+                                if mouse_captured {
+                                    let mouse_diff = self.input_helper.mouse_diff();
+                                    match axis {
+                                        MouseAxis::MouseX => {
+                                            self.action_state_map.insert(
+                                                name.to_string(),
+                                                ActionState {
+                                                    name: name.to_string(),
+                                                    active: true,
+                                                    active_state_changed_this_frame: false,
+                                                    value: Some(mouse_diff.0 as f64),
+                                                },
+                                            );
+                                        }
+                                        MouseAxis::MouseY => {
+                                            self.action_state_map.insert(
+                                                name.to_string(),
+                                                ActionState {
+                                                    name: name.to_string(),
+                                                    active: true,
+                                                    active_state_changed_this_frame: false,
+                                                    value: Some(mouse_diff.1 as f64),
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        },
+                    }
+                }
+            }
+        }
+        true
     }
 
     pub fn process_system_event(&mut self, system_event: SystemEvent) {
@@ -192,98 +238,4 @@ impl InputSystem {
 pub enum MouseButton {
     Left,
     Right,
-}
-
-#[derive(Debug, Eq, Hash, PartialEq)]
-pub enum Key {
-    A,
-    Alt,
-    Insert,
-    ArrowDown,
-    ArrowLeft,
-    ArrowRight,
-    ArrowUp,
-    B,
-    Backspace,
-    C,
-    CapsLock,
-    Clear,
-    Control,
-    D,
-    Delete,
-    E,
-    End,
-    Enter,
-    Escape,
-    F,
-    F1,
-    F2,
-    F3,
-    F4,
-    F5,
-    F6,
-    F7,
-    F8,
-    F9,
-    F10,
-    F11,
-    F12,
-    F13,
-    F14,
-    F15,
-    F16,
-    F17,
-    F18,
-    F19,
-    G,
-    H,
-    Home,
-    I,
-    J,
-    K,
-    Key0,
-    Key1,
-    Key2,
-    Key3,
-    Key4,
-    Key5,
-    Key6,
-    Key7,
-    Key8,
-    Key9,
-    KeyBackSlash,
-    KeyBackTick,
-    KeyComma,
-    KeyEquals,
-    KeyForwardSlash,
-    KeyFullStop,
-    KeyLeftBracket,
-    KeyMinus,
-    KeyPlus,
-    KeyRightBracket,
-    KeySemicolon,
-    KeySingleQuote,
-    KeyStar,
-    L,
-    M,
-    N,
-    NumLock,
-    O,
-    P,
-    PageDown,
-    PageUp,
-    Q,
-    R,
-    S,
-    Shift,
-    Space,
-    Super,
-    T,
-    Tab,
-    U,
-    V,
-    W,
-    X,
-    Y,
-    Z,
 }

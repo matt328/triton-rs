@@ -86,7 +86,7 @@ impl<'a> System<'a> for CameraSystem {
                 if let Some(y) = delta_y {
                     Quaternion::from(Euler {
                         x: Rad(0.0),
-                        y: Rad(-y as f32 * 0.01),
+                        y: Rad(-y as f32 * 0.001),
                         z: Rad(0.0),
                     })
                 } else {
@@ -97,7 +97,7 @@ impl<'a> System<'a> for CameraSystem {
             let yaw_quat: Quaternion<f32> = {
                 if let Some(x) = delta_x {
                     Quaternion::from(Euler {
-                        x: Rad(x as f32 * 0.01),
+                        x: Rad(x as f32 * 0.001),
                         y: Rad(0.0),
                         z: Rad(0.0),
                     })
@@ -109,12 +109,12 @@ impl<'a> System<'a> for CameraSystem {
             camera.rotation = (yaw_quat * pitch_quat) * camera.rotation;
 
             if let Some(_) = input_state.0.get("walk_forward") {
-                let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, -1.0));
+                let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
                 camera.velocity += direction * 0.5;
             }
 
             if let Some(_) = input_state.0.get("walk_backward") {
-                let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, -1.0));
                 camera.velocity += direction * 0.5;
             }
 

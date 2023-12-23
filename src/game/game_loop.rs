@@ -44,8 +44,8 @@ impl<'a, 'b> GameLoop<'a, 'b> {
         self.context.window_resized(new_size);
     }
 
-    pub fn process_winit_event(&mut self, event: &Event<()>) -> bool {
-        self.context.process_winit_event(event)
+    pub fn process_winit_event(&mut self, event: &Event<()>, mouse_captured: bool) -> bool {
+        self.context.process_winit_event(event, mouse_captured)
     }
 
     pub fn process_system_event(&mut self, system_event: SystemEvent) {

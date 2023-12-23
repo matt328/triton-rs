@@ -1,10 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use log::info;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
-use winit::{dpi::PhysicalSize, event::Event, window::Window};
+use winit::{dpi::PhysicalSize, event::Event, keyboard::KeyCode, window::Window};
 
 use crate::graphics::{Renderer, CUBE_INDICES, CUBE_VERTICES};
 
@@ -16,7 +15,7 @@ use super::{
     },
     input::{
         ActionDescriptor, ActionKind, ActionMap, ActionState, InputSystem, MouseAxis, MouseSource,
-        Source, SystemEvent, SystemKey,
+        Source, SystemEvent,
     },
 };
 
@@ -126,10 +125,10 @@ impl<'a, 'b> Context<'a, 'b> {
             .add_action_map(
                 "main",
                 ActionMap::new()
-                    .bind(Source::Keyboard(SystemKey::W), walk_forward_action)
-                    .bind(Source::Keyboard(SystemKey::ArrowUp), walk_forward_action)
-                    .bind(Source::Keyboard(SystemKey::S), walk_backward_action)
-                    .bind(Source::Keyboard(SystemKey::ArrowDown), walk_backward_action)
+                    .bind(Source::Keyboard(KeyCode::KeyW), walk_forward_action)
+                    .bind(Source::Keyboard(KeyCode::ArrowUp), walk_forward_action)
+                    .bind(Source::Keyboard(KeyCode::KeyS), walk_backward_action)
+                    .bind(Source::Keyboard(KeyCode::ArrowDown), walk_backward_action)
                     .bind(
                         Source::Mouse(MouseSource::Move(MouseAxis::MouseY)),
                         look_vertical_action,
@@ -148,8 +147,8 @@ impl<'a, 'b> Context<'a, 'b> {
         })
     }
 
-    pub fn process_winit_event(&mut self, event: &Event<()>) -> bool {
-        self.input_system.process_winit_event(event)
+    pub fn process_winit_event(&mut self, event: &Event<()>, mouse_captured: bool) -> bool {
+        self.input_system.process_winit_event(event, mouse_captured)
     }
 
     pub fn process_system_event(&mut self, system_event: SystemEvent) {
@@ -157,10 +156,11 @@ impl<'a, 'b> Context<'a, 'b> {
     }
 
     pub fn pre_update(&mut self) {
-        self.input_system.update();
         self.world.insert(InputStateResource(
             self.input_system.get_action_state_map().clone(),
         ));
+        // I think we should clear out the action states after we've cloned them into the ECS Resource
+        self.input_system.update();
     }
 
     pub fn update(&mut self) {

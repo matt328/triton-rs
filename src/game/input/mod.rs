@@ -1,6 +1,5 @@
 pub use system::{
-    InputSystem, Key as SystemKey, MouseButton as SystemMouseButton, SystemEvent, SystemEventKind,
-    SystemEventState,
+    InputSystem, MouseButton as SystemMouseButton, SystemEvent, SystemEventKind, SystemEventState,
 };
 
 pub use map::ActionMap;

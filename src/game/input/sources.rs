@@ -1,8 +1,10 @@
-use super::{SystemKey, SystemMouseButton};
+use winit::keyboard::KeyCode;
+
+use super::SystemMouseButton;
 
 #[derive(Eq, Hash, PartialEq, Debug)]
 pub enum Source {
-    Keyboard(SystemKey),
+    Keyboard(KeyCode),
     Mouse(MouseSource),
 }
 
