@@ -2,24 +2,22 @@
     things:
         - ActionState - name, a kind, and an optional value f64
         - Source - An abstraction over Key, Button, Axis
-        - Binding - Contains a Source and logic to turn it into an ActionState
-        - Layout/ActionSet - Mapping of Bindings to ActionStates.
+        - ActionMap - Mapping of Sources to ActionStates.
             - when the binding is triggered, it translates into the ActionState
             - puts/updates an ActionState in the current_state
     System either polls a gamepad with gilrs or recieves events from winit
     - these SystemEvents get are mapped into Sources
     - get the current layout
     - look over the layout to see if any bindings exist containing said source
-    - if they do, execute the binding logic to produce an Action
     - put the action into the State
-    - state gets put into a Resource in the specs
+    - state gets put into a Resource in the ECS
 */
 
 use std::collections::HashMap;
 
 use anyhow::anyhow;
 use gilrs::{Axis, GamepadId, Gilrs};
-use winit::{event::Event, keyboard::KeyCode};
+use winit::event::Event;
 use winit_input_helper::WinitInputHelper;
 
 use crate::game::input::{sources::ActionState, MouseAxis};
@@ -29,61 +27,6 @@ use super::{
     sources::{ActionDescriptor, Source},
     GamepadSource, MouseSource,
 };
-
-#[derive(Debug, Copy, Clone)]
-pub enum SystemEventKind {
-    Key,
-    MouseMotion(MouseAxis),
-    MouseButton,
-    MouseScroll,
-}
-
-#[derive(Debug)]
-pub enum SystemEventState {
-    Pressed,
-    Released,
-}
-
-#[derive(Debug)]
-pub struct SystemEvent {
-    pub kind: SystemEventKind,
-    pub state: Option<SystemEventState>,
-    pub value: Option<f64>,
-    pub key: Option<KeyCode>,
-    pub mouse_button: Option<MouseButton>,
-    pub repeated: bool,
-}
-
-impl Default for SystemEvent {
-    fn default() -> Self {
-        SystemEvent {
-            kind: SystemEventKind::Key,
-            state: None,
-            value: None,
-            key: None,
-            mouse_button: None,
-            repeated: false,
-        }
-    }
-}
-
-impl TryInto<Source> for SystemEvent {
-    type Error = String;
-
-    fn try_into(self) -> Result<Source, Self::Error> {
-        // Create a Source that matches this SystemEvent
-        match self.kind {
-            SystemEventKind::Key => Ok(Source::Keyboard(self.key.unwrap())),
-            SystemEventKind::MouseMotion(MouseAxis::MouseX) => {
-                Ok(Source::Mouse(super::MouseSource::Move(MouseAxis::MouseX)))
-            }
-            SystemEventKind::MouseMotion(MouseAxis::MouseY) => {
-                Ok(Source::Mouse(super::MouseSource::Move(MouseAxis::MouseY)))
-            }
-            _ => Err("no".to_string()),
-        }
-    }
-}
 
 pub struct InputSystem {
     action_descriptor_map: HashMap<String, ActionDescriptor>,
@@ -101,6 +44,7 @@ impl Default for InputSystem {
     }
 }
 
+// TODO: pull this out into preferences
 const RIGHT_STICK_MULTIPLIER: f32 = 6.0;
 const INVERT_RIGHT_STICK_Y: f32 = 1.0;
 

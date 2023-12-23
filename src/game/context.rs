@@ -16,7 +16,7 @@ use super::{
     },
     input::{
         ActionDescriptor, ActionKind, ActionMap, ActionState, GamepadSource, InputSystem,
-        MouseAxis, MouseSource, Source, SystemEvent,
+        MouseAxis, MouseSource, Source,
     },
 };
 

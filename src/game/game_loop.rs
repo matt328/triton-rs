@@ -9,8 +9,6 @@ use tracing_tracy::client::frame_mark;
 
 use crate::game::context::Context;
 
-use super::input::SystemEvent;
-
 pub struct GameLoop<'a, 'b> {
     previous_instant: Instant,
     accumulated_time: f32,
