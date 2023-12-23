@@ -94,6 +94,10 @@ impl<'a, 'b> Context<'a, 'b> {
 
         let walk_forward_action = "walk_forward";
         let walk_backward_action = "walk_backward";
+        let strafe_right_action = "strafe_right";
+        let strafe_left_action = "strafe_left";
+        let move_up_action = "move_up";
+        let move_down_action = "move_down";
         let look_vertical_action = "look_vertical_action";
         let look_horizontal_action = "look_horizontal_action";
 
@@ -111,6 +115,18 @@ impl<'a, 'b> Context<'a, 'b> {
                 },
             )
             .add_action(
+                strafe_right_action,
+                ActionDescriptor {
+                    kind: ActionKind::Button,
+                },
+            )
+            .add_action(
+                strafe_left_action,
+                ActionDescriptor {
+                    kind: ActionKind::Button,
+                },
+            )
+            .add_action(
                 look_vertical_action,
                 ActionDescriptor {
                     kind: ActionKind::Axis,
@@ -122,6 +138,18 @@ impl<'a, 'b> Context<'a, 'b> {
                     kind: ActionKind::Axis,
                 },
             )
+            .add_action(
+                move_up_action,
+                ActionDescriptor {
+                    kind: ActionKind::Button,
+                },
+            )
+            .add_action(
+                move_down_action,
+                ActionDescriptor {
+                    kind: ActionKind::Button,
+                },
+            )
             .add_action_map(
                 "main",
                 ActionMap::new()
@@ -129,6 +157,12 @@ impl<'a, 'b> Context<'a, 'b> {
                     .bind(Source::Keyboard(KeyCode::ArrowUp), walk_forward_action)
                     .bind(Source::Keyboard(KeyCode::KeyS), walk_backward_action)
                     .bind(Source::Keyboard(KeyCode::ArrowDown), walk_backward_action)
+                    .bind(Source::Keyboard(KeyCode::KeyA), strafe_left_action)
+                    .bind(Source::Keyboard(KeyCode::ArrowLeft), strafe_left_action)
+                    .bind(Source::Keyboard(KeyCode::KeyD), strafe_right_action)
+                    .bind(Source::Keyboard(KeyCode::ArrowRight), strafe_right_action)
+                    .bind(Source::Keyboard(KeyCode::KeyQ), move_up_action)
+                    .bind(Source::Keyboard(KeyCode::KeyZ), move_down_action)
                     .bind(
                         Source::Mouse(MouseSource::Move(MouseAxis::MouseY)),
                         look_vertical_action,
@@ -151,11 +185,8 @@ impl<'a, 'b> Context<'a, 'b> {
         self.input_system.process_winit_event(event, mouse_captured)
     }
 
-    pub fn process_system_event(&mut self, system_event: SystemEvent) {
-        self.input_system.process_system_event(system_event);
-    }
-
     pub fn pre_update(&mut self) {
+        self.input_system.update_gamepads();
         self.world.insert(InputStateResource(
             self.input_system.get_action_state_map().clone(),
         ));

@@ -123,10 +123,16 @@ impl InputSystem {
         self
     }
 
-    /// Clears last frame's state and queries gamepad state and adds actions to the state map.  Call
-    /// this at the beginning of a frame and call process_system_event after this.
     pub fn update(&mut self) {
         self.action_state_map.clear();
+    }
+
+    pub fn update_gamepads(&mut self) {
+        /*
+           Loop over all mapped sources that come from gamepads
+           grab the gamepad input's state and translate it into an
+           ActionState
+        */
     }
 
     pub fn process_winit_event(&mut self, event: &Event<()>, mouse_captured: bool) -> bool {

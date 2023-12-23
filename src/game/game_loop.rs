@@ -48,10 +48,6 @@ impl<'a, 'b> GameLoop<'a, 'b> {
         self.context.process_winit_event(event, mouse_captured)
     }
 
-    pub fn process_system_event(&mut self, system_event: SystemEvent) {
-        self.context.process_system_event(system_event);
-    }
-
     /// Implements fixed timestep game loop https://gafferongames.com/post/fix_your_timestep/
     pub fn update(&mut self) -> anyhow::Result<()> {
         let _update = span!(Level::INFO, "game update", self.accumulated_time).entered();

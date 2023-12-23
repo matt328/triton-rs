@@ -20,6 +20,7 @@ pub struct Camera {
     pub position: Vector3<f32>,
     pub rotation: Quaternion<f32>,
     pub velocity: Vector3<f32>,
+    pub y_velocity: f32,
 }
 
 impl Camera {
@@ -42,9 +43,10 @@ impl Default for Camera {
             aspect_ratio: 800.0 / 600.0,
             near: 0.1,
             far: 100.0,
-            position: Vector3::new(3.0, 3.0, 10.0),
+            position: Vector3::new(3.0, 0.0, -10.0),
             rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
             velocity: Vector3::zero(),
+            y_velocity: 0.0,
         }
     }
 }
@@ -97,7 +99,7 @@ impl<'a> System<'a> for CameraSystem {
             let yaw_quat: Quaternion<f32> = {
                 if let Some(x) = delta_x {
                     Quaternion::from(Euler {
-                        x: Rad(x as f32 * 0.001),
+                        x: Rad(-x as f32 * 0.001),
                         y: Rad(0.0),
                         z: Rad(0.0),
                     })
@@ -118,13 +120,36 @@ impl<'a> System<'a> for CameraSystem {
                 camera.velocity += direction * 0.5;
             }
 
+            if input_state.0.get("strafe_right").is_some() {
+                let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, -1.0));
+                let right = direction.cross(Vector3::unit_y());
+                camera.velocity -= right * 0.5;
+            }
+
+            if input_state.0.get("strafe_left").is_some() {
+                let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, -1.0));
+                let left = direction.cross(Vector3::unit_y());
+                camera.velocity += left * 0.5;
+            }
+
+            if input_state.0.get("move_up").is_some() {
+                camera.y_velocity -= 0.5;
+            }
+
+            if input_state.0.get("move_down").is_some() {
+                camera.y_velocity += 0.5;
+            }
+
             if let Some(value) = aspect {
                 event!(Level::INFO, "aspect ratio: {}", value);
                 camera.aspect_ratio = value;
             }
 
             camera.position += camera.velocity * 0.16;
+            camera.position.y += camera.y_velocity * 0.16;
+
             camera.velocity = Vector3::zero();
+            camera.y_velocity = 0.0;
         }
     }
 }
