@@ -160,6 +160,10 @@ impl<'a, 'b> Context<'a, 'b> {
                         Source::Gamepad(GamepadSource::Axis(Axis::LeftStickY)),
                         walk_forward_action,
                     )
+                    .bind(
+                        Source::Gamepad(GamepadSource::Axis(Axis::LeftStickX)),
+                        strafe_right_action,
+                    )
                     .bind(Source::Keyboard(KeyCode::KeyS), walk_backward_action)
                     .bind(Source::Keyboard(KeyCode::ArrowDown), walk_backward_action)
                     .bind(Source::Keyboard(KeyCode::KeyA), strafe_left_action)
@@ -169,8 +173,16 @@ impl<'a, 'b> Context<'a, 'b> {
                     .bind(Source::Keyboard(KeyCode::KeyQ), move_up_action)
                     .bind(Source::Keyboard(KeyCode::KeyZ), move_down_action)
                     .bind(
+                        Source::Gamepad(GamepadSource::Axis(Axis::RightStickY)),
+                        look_vertical_action,
+                    )
+                    .bind(
                         Source::Mouse(MouseSource::Move(MouseAxis::MouseY)),
                         look_vertical_action,
+                    )
+                    .bind(
+                        Source::Gamepad(GamepadSource::Axis(Axis::RightStickX)),
+                        look_horizontal_action,
                     )
                     .bind(
                         Source::Mouse(MouseSource::Move(MouseAxis::MouseX)),

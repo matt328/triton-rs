@@ -120,10 +120,10 @@ impl<'a> System<'a> for CameraSystem {
                 camera.velocity += direction * 0.5;
             }
 
-            if input_state.0.get("strafe_right").is_some() {
+            if let Some(state) = input_state.0.get("strafe_right") {
                 let direction = camera.rotation.rotate_vector(Vector3::new(0.0, 0.0, -1.0));
                 let right = direction.cross(Vector3::unit_y());
-                camera.velocity -= right * 0.5;
+                camera.velocity -= right * state.value.unwrap_or(0.5);
             }
 
             if input_state.0.get("strafe_left").is_some() {

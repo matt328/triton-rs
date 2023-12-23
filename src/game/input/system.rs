@@ -101,6 +101,9 @@ impl Default for InputSystem {
     }
 }
 
+const RIGHT_STICK_MULTIPLIER: f32 = 6.0;
+const INVERT_RIGHT_STICK_Y: f32 = 1.0;
+
 impl InputSystem {
     pub fn new() -> Self {
         InputSystem {
@@ -142,19 +145,52 @@ impl InputSystem {
             if let Some(action_map) = self.action_map_map.get(&self.current_action_map) {
                 for (source, name) in action_map.map.iter() {
                     match source {
-                        Source::Gamepad(GamepadSource::Axis(Axis::LeftStickY)) => {
-                            let y_axis_value =
-                                gamepad.axis_data(Axis::LeftStickY).map(|a| a.value());
-                            self.action_state_map.insert(
-                                name.to_string(),
-                                ActionState {
-                                    name: name.to_string(),
-                                    active: true,
-                                    active_state_changed_this_frame: false,
-                                    value: y_axis_value,
-                                },
-                            );
+                        Source::Gamepad(GamepadSource::Axis(
+                            axis @ Axis::LeftStickY | axis @ Axis::LeftStickX,
+                        )) => {
+                            if let Some(axis_data) =
+                                gamepad.axis_data(*axis).filter(|v| v.value() != 0.0)
+                            {
+                                let name_clone = name.to_string();
+                                self.action_state_map.insert(
+                                    name_clone.clone(),
+                                    ActionState {
+                                        name: name_clone,
+                                        active: true,
+                                        active_state_changed_this_frame: false,
+                                        value: Some(axis_data.value()),
+                                    },
+                                );
+                            }
                         }
+
+                        Source::Gamepad(GamepadSource::Axis(
+                            axis @ Axis::RightStickY | axis @ Axis::RightStickX,
+                        )) => {
+                            if let Some(axis_data) =
+                                gamepad.axis_data(*axis).filter(|v| v.value() != 0.0)
+                            {
+                                let name_clone = name.to_string();
+                                self.action_state_map.insert(
+                                    name_clone.clone(),
+                                    ActionState {
+                                        name: name_clone,
+                                        active: true,
+                                        active_state_changed_this_frame: false,
+                                        value: Some(
+                                            axis_data.value()
+                                                * RIGHT_STICK_MULTIPLIER
+                                                * if *axis == Axis::RightStickY {
+                                                    INVERT_RIGHT_STICK_Y
+                                                } else {
+                                                    1.0
+                                                },
+                                        ),
+                                    },
+                                );
+                            }
+                        }
+
                         _ => {}
                     }
                 }
