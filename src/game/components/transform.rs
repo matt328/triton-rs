@@ -33,9 +33,9 @@ impl<'a> System<'a> for TransformSystem {
             let angle = Deg(0.5);
             let new_rotation = Quaternion::from_axis_angle(axis, angle);
 
-            let rot = Quaternion::from(transform.rotation) * new_rotation;
+            let rot = transform.rotation * new_rotation;
 
-            transform.rotation = rot.into();
+            transform.rotation = rot;
         }
     }
 }

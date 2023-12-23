@@ -93,6 +93,12 @@ pub struct InputSystem {
     input_helper: WinitInputHelper,
 }
 
+impl Default for InputSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InputSystem {
     pub fn new() -> Self {
         InputSystem {
@@ -141,38 +147,37 @@ impl InputSystem {
                                 );
                             }
                         }
-                        Source::Mouse(mouse_source) => match mouse_source {
-                            MouseSource::Move(axis) => {
-                                if mouse_captured {
-                                    let mouse_diff = self.input_helper.mouse_diff();
-                                    match axis {
-                                        MouseAxis::MouseX => {
-                                            self.action_state_map.insert(
-                                                name.to_string(),
-                                                ActionState {
-                                                    name: name.to_string(),
-                                                    active: true,
-                                                    active_state_changed_this_frame: false,
-                                                    value: Some(mouse_diff.0 as f64),
-                                                },
-                                            );
-                                        }
-                                        MouseAxis::MouseY => {
-                                            self.action_state_map.insert(
-                                                name.to_string(),
-                                                ActionState {
-                                                    name: name.to_string(),
-                                                    active: true,
-                                                    active_state_changed_this_frame: false,
-                                                    value: Some(mouse_diff.1 as f64),
-                                                },
-                                            );
-                                        }
+
+                        Source::Mouse(MouseSource::Move(axis)) => {
+                            if mouse_captured {
+                                let mouse_diff = self.input_helper.mouse_diff();
+                                match axis {
+                                    MouseAxis::MouseX => {
+                                        self.action_state_map.insert(
+                                            name.to_string(),
+                                            ActionState {
+                                                name: name.to_string(),
+                                                active: true,
+                                                active_state_changed_this_frame: false,
+                                                value: Some(mouse_diff.0 as f64),
+                                            },
+                                        );
+                                    }
+                                    MouseAxis::MouseY => {
+                                        self.action_state_map.insert(
+                                            name.to_string(),
+                                            ActionState {
+                                                name: name.to_string(),
+                                                active: true,
+                                                active_state_changed_this_frame: false,
+                                                value: Some(mouse_diff.1 as f64),
+                                            },
+                                        );
                                     }
                                 }
                             }
-                            _ => {}
-                        },
+                        }
+                        _ => {}
                     }
                 }
             }

@@ -6,6 +6,12 @@ pub struct ActionMap {
     pub map: HashMap<Source, String>,
 }
 
+impl Default for ActionMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ActionMap {
     pub fn new() -> Self {
         ActionMap {
