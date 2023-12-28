@@ -6,7 +6,7 @@ use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
 use winit::{dpi::PhysicalSize, event::Event, keyboard::KeyCode, window::Window};
 
-use crate::graphics::{Renderer, CUBE_INDICES, CUBE_VERTICES};
+use crate::graphics::{RenderCoordinator, CUBE_INDICES, CUBE_VERTICES};
 
 use super::{
     components::{
@@ -37,7 +37,7 @@ impl<'a, 'b> Context<'a, 'b> {
     ) -> anyhow::Result<Self> {
         let extent: [f32; 2] = window.inner_size().into();
 
-        let mut renderer = Renderer::new(required_extensions, window.clone())?;
+        let mut renderer = RenderCoordinator::new(required_extensions, window.clone())?;
 
         let mut world = World::new();
 

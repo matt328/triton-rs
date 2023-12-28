@@ -56,10 +56,7 @@ impl<'a, 'b> GameLoop<'a, 'b> {
             .duration_since(self.previous_instant)
             .as_secs_f32();
 
-        event!(Level::INFO, elapsed);
-
         if elapsed > MAX_FRAME_TIME {
-            event!(Level::WARN, "elapsed > MAX_FRAME_TIME");
             elapsed = MAX_FRAME_TIME;
         }
 
@@ -70,7 +67,6 @@ impl<'a, 'b> GameLoop<'a, 'b> {
         self.context.pre_update();
 
         while self.accumulated_time >= FIXED_TIME_STEP {
-            event!(Level::INFO, "calling context.upadte()");
             self.context.update();
             self.accumulated_time -= FIXED_TIME_STEP;
         }
@@ -78,8 +74,6 @@ impl<'a, 'b> GameLoop<'a, 'b> {
         update_loop.exit();
 
         let blending_factor = self.accumulated_time / FIXED_TIME_STEP;
-
-        event!(Level::INFO, blending_factor);
 
         self.context.render(blending_factor)?;
 

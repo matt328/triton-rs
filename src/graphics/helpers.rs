@@ -26,7 +26,7 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::ShaderModule,
-    swapchain::{Surface, Swapchain},
+    swapchain::Surface,
 };
 
 use super::shaders::VertexPositionColor;
@@ -62,13 +62,13 @@ pub fn select_physical_device(
 
 pub fn get_render_pass(
     device: Arc<Device>,
-    swapchain: Arc<Swapchain>,
+    image_format: Format,
 ) -> anyhow::Result<Arc<RenderPass>> {
     vulkano::single_pass_renderpass!(
         device,
         attachments: {
             color: {
-                format: swapchain.image_format(), // set the format the same as the swapchain
+                format: image_format, // set the format the same as the swapchain
                 samples: 1,
                 load_op: Clear,
                 store_op: Store,

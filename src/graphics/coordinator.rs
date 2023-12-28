@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 
-use cgmath::{Matrix4, SquareMatrix};
+use cgmath::Matrix4;
 use log::{error, info};
 
 use tracing::{event, span, Level};
@@ -10,24 +10,16 @@ use tracing::{event, span, Level};
 use vulkano::instance::InstanceCreateFlags;
 
 use vulkano::{
-    buffer::{
-        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
-    },
+    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        CommandBufferExecFuture, CommandBufferUsage, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
-        SubpassBeginInfo, SubpassContents,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        CommandBufferExecFuture, CommandBufferUsage,
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-    pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline},
-    render_pass::{Framebuffer, RenderPass},
+    pipeline::graphics::viewport::Viewport,
     swapchain::{
         self, PresentFuture, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo,
         SwapchainPresentInfo,
@@ -44,8 +36,10 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::game::Transform;
 
 use super::{
+    basic_renderer::BasicRenderer,
     helpers,
-    mesh::{BasicMesh, MeshBuilder},
+    mesh::MeshBuilder,
+    render_data::RenderData,
     shaders::{self, VertexPositionColor},
 };
 type MyJoinFuture = JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>;
@@ -54,7 +48,7 @@ type MyPresentFuture = PresentFuture<MyCommandBufferFuture>;
 type MyFenceSignalFuture = FenceSignalFuture<MyPresentFuture>;
 type FenceSignalFuturesList = Vec<Option<Arc<MyFenceSignalFuture>>>;
 
-pub struct Renderer {
+pub struct RenderCoordinator {
     device: Arc<Device>,
     swapchain: Arc<Swapchain>,
 
@@ -65,26 +59,19 @@ pub struct Renderer {
 
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
-    buffer_allocator: SubbufferAllocator,
-    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 
     queue: Arc<Queue>,
-    meshes: Vec<BasicMesh>,
-
-    pipeline: Arc<GraphicsPipeline>,
-    render_pass: Arc<RenderPass>,
 
     // Per Frame Data
     previous_fence_i: u32,
     fences: FenceSignalFuturesList,
     uniform_buffers: Vec<Subbuffer<shaders::vs_position_color::FrameData>>,
-    framebuffers: Vec<Arc<Framebuffer>>,
 
-    object_data: Vec<(usize, shaders::vs_position_color::ObjectData)>,
-    cam_matrices: (Matrix4<f32>, Matrix4<f32>),
+    render_data: RenderData,
+    basic_renderer: BasicRenderer,
 }
 
-impl Renderer {
+impl RenderCoordinator {
     pub fn new(extensions: InstanceExtensions, window: Arc<Window>) -> anyhow::Result<Self> {
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
 
@@ -162,16 +149,7 @@ impl Renderer {
             )?
         };
 
-        let render_pass = helpers::get_render_pass(device.clone(), swapchain.clone())?;
-
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-        let framebuffers =
-            helpers::get_framebuffers(&images, render_pass.clone(), memory_allocator.clone())?;
-
-        let vs = shaders::vs_position_color::load(device.clone())
-            .expect("failed to create shader module");
-        let fs = shaders::fs_basic::load(device.clone()).expect("failed to create shader module");
 
         let viewport = Viewport {
             offset: [0.0, 0.0],
@@ -179,32 +157,8 @@ impl Renderer {
             depth_range: 0.0..=1.0,
         };
 
-        let pipeline = helpers::get_pipeline(
-            device.clone(),
-            vs.clone(),
-            fs.clone(),
-            render_pass.clone(),
-            viewport.clone(),
-        )?;
-
-        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-            Default::default(),
-        ));
-
         let command_buffer_allocator =
             StandardCommandBufferAllocator::new(device.clone(), Default::default());
-
-        // Create the buffer allocator.
-        let buffer_allocator = SubbufferAllocator::new(
-            memory_allocator.clone(),
-            SubbufferAllocatorCreateInfo {
-                buffer_usage: BufferUsage::STORAGE_BUFFER,
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-        );
 
         let frames_in_flight = images.len();
 
@@ -228,14 +182,19 @@ impl Renderer {
             })
             .collect::<anyhow::Result<Vec<BuffersType>>>()?;
 
-        Ok(Renderer {
+        let basic_renderer = BasicRenderer::new(
+            device.clone(),
+            memory_allocator.clone(),
+            &images,
+            viewport.clone(),
+        )?;
+
+        Ok(RenderCoordinator {
             device,
             swapchain,
-            render_pass,
             viewport,
             memory_allocator,
             command_buffer_allocator,
-            descriptor_set_allocator,
             queue,
             window_resized: true,
             dimensions: window.inner_size(),
@@ -243,12 +202,8 @@ impl Renderer {
             fences: vec![None; frames_in_flight],
             previous_fence_i: 0,
             uniform_buffers,
-            meshes: vec![],
-            framebuffers,
-            pipeline,
-            object_data: vec![],
-            buffer_allocator,
-            cam_matrices: (Matrix4::identity(), Matrix4::identity()),
+            render_data: { Default::default() },
+            basic_renderer,
         })
     }
 
@@ -257,13 +212,13 @@ impl Renderer {
         verts: Vec<VertexPositionColor>,
         indices: Vec<u16>,
     ) -> anyhow::Result<usize> {
-        let position = self.meshes.len();
+        let position = self.render_data.mesh_position();
         let mesh = MeshBuilder::default()
             .with_vertices(verts)
             .with_indices(indices)
             .build(self.memory_allocator.clone())
             .context("building mesh")?;
-        self.meshes.push(mesh);
+        self.render_data.add_mesh(mesh);
         Ok(position)
     }
 
@@ -324,9 +279,21 @@ impl Renderer {
 
         self.update_uniforms(image_i as usize)?;
 
-        let command_buffer = self.record_command_buffer(image_i, &self.meshes)?;
+        let mut builder = AutoCommandBufferBuilder::primary(
+            &self.command_buffer_allocator,
+            self.queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        )?;
 
-        self.object_data = Vec::new();
+        self.basic_renderer.record_command_buffer(
+            image_i as usize,
+            &mut builder,
+            &self.render_data,
+        )?;
+
+        let command_buffer = builder.build()?;
+
+        self.render_data.reset_object_data();
 
         let span = span!(Level::INFO, "present").entered();
         let future = previous_future
@@ -358,110 +325,24 @@ impl Renderer {
         Ok(())
     }
 
-    // TODO: eventually hook up correlating mesh_id to transforms here
-    // Use the mesh_id to order the transforms in the buffer
-    // Then loop over meshes, passing mesh_id to the draw call as instance_id
     pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: Transform) {
         let d = shaders::vs_position_color::ObjectData {
             model: transform.model().into(),
         };
-        self.object_data.push((mesh_id, d));
+        self.render_data.add_object_data(mesh_id, d);
     }
 
     pub fn set_camera_params(&mut self, cam_matrices: (Matrix4<f32>, Matrix4<f32>)) {
-        self.cam_matrices = cam_matrices;
+        self.render_data.update_cam_matrices(cam_matrices);
     }
 
     pub fn update_uniforms(&mut self, index: usize) -> anyhow::Result<()> {
         let _span = span!(Level::INFO, "update_uniforms").entered();
         *self.uniform_buffers[index].write()? = shaders::vs_position_color::FrameData {
-            view: self.cam_matrices.1.into(),
-            proj: self.cam_matrices.0.into(),
+            view: self.render_data.cam_matrices().1.into(),
+            proj: self.render_data.cam_matrices().0.into(),
         };
         Ok(())
-    }
-
-    pub fn record_command_buffer(
-        &self,
-        index: u32,
-        meshes: &Vec<BasicMesh>,
-    ) -> anyhow::Result<Arc<PrimaryAutoCommandBuffer>> {
-        let _span = span!(Level::INFO, "record_command_buffer").entered();
-        let mut builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
-            self.queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-        )?;
-
-        // Update the object data buffer
-        let object_buffer_span = span!(Level::INFO, "update object buffer").entered();
-
-        let objects: Vec<_> = self.object_data.iter().map(|a| a.1).collect();
-
-        let object_data_buffer = self
-            .buffer_allocator
-            .allocate_slice(self.object_data.len() as _)?;
-        object_data_buffer.write()?.copy_from_slice(&objects);
-        object_buffer_span.exit();
-
-        // (re)create the object data descriptor set
-        let span_ds = span!(Level::INFO, "create object descriptor set").entered();
-        let object_data_buffer_set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
-            self.pipeline.layout().set_layouts()[1].clone(),
-            [WriteDescriptorSet::buffer(0, object_data_buffer)],
-            [],
-        )
-        .context("Creating Object Data Descriptor Set")?;
-        span_ds.exit();
-
-        // (re)create the uniform buffer descriptor set
-        let uniform_set = span!(Level::INFO, "create uniform descriptor set").entered();
-        let uniform_buffer_set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
-            self.pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(
-                0,
-                self.uniform_buffers[index as usize].clone(),
-            )],
-            [],
-        )
-        .context("creating uniform buffer descriptor set")?;
-        uniform_set.exit();
-
-        builder
-            .begin_render_pass(
-                RenderPassBeginInfo {
-                    clear_values: vec![Some([0.392, 0.494, 0.929, 1.0].into()), Some(1f32.into())],
-                    ..RenderPassBeginInfo::framebuffer(self.framebuffers[index as usize].clone())
-                },
-                SubpassBeginInfo {
-                    contents: SubpassContents::Inline,
-                    ..Default::default()
-                },
-            )?
-            .set_viewport(0, [self.viewport.clone()].into_iter().collect())?
-            .bind_pipeline_graphics(self.pipeline.clone())?
-            .bind_descriptor_sets(
-                vulkano::pipeline::PipelineBindPoint::Graphics,
-                self.pipeline.layout().clone(),
-                0,
-                vec![uniform_buffer_set.clone(), object_data_buffer_set.clone()],
-            )?;
-
-        event!(Level::INFO, "meshes: {}", meshes.len());
-
-        for (i, (mesh_index, _)) in self.object_data.iter().enumerate() {
-            let mesh = &self.meshes[*mesh_index];
-            builder
-                .bind_vertex_buffers(0, mesh.vertex_buffer.clone())?
-                .bind_index_buffer(mesh.index_buffer.clone())?
-                .draw_indexed(mesh.index_buffer.len() as u32, 1, 0, 0, i as u32)?;
-        }
-
-        builder.end_render_pass(Default::default())?;
-
-        builder.build().context("building command buffer")
     }
 
     pub fn resize_swapchain(&mut self) -> anyhow::Result<()> {
@@ -479,19 +360,13 @@ impl Renderer {
 
         self.swapchain = new_swapchain;
 
-        self.framebuffers = Vec::new();
-
-        self.framebuffers = helpers::get_framebuffers(
-            &new_images,
-            self.render_pass.clone(),
-            self.memory_allocator.clone(),
-        )
-        .context("recreating framebuffers")?;
-
         if self.window_resized {
             self.viewport.extent = self.dimensions.into();
         }
+
+        let result = self.basic_renderer.resize(&new_images);
+
         self.window_resized = false;
-        Ok(())
+        result
     }
 }
