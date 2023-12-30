@@ -5,7 +5,10 @@ use imgui::{Context as ImGuiContext, DrawVert, TextureId, Textures};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use vulkano::{
     buffer::{allocator::SubbufferAllocator, BufferContents},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        PrimaryAutoCommandBuffer,
+    },
     device::{Device, Queue},
     image::{sampler::Sampler, view::ImageView, Image},
     pipeline::{
@@ -51,16 +54,17 @@ pub struct ImGuiRenderer {
     imgui: ImGuiContext,
     render_pass: Arc<RenderPass>,
     pipeline: Arc<GraphicsPipeline>,
-    font_texture: ImGuiTexture,
-    textures: Textures<ImGuiTexture>,
-    vertex_buffer_pool: SubbufferAllocator,
-    index_buffer_pool: SubbufferAllocator,
+    // font_texture: ImGuiTexture,
+    // textures: Textures<ImGuiTexture>,
+    // vertex_buffer_pool: SubbufferAllocator,
+    // index_buffer_pool: SubbufferAllocator,
 }
 
 impl ImGuiRenderer {
     pub fn new(
         device: Arc<Device>,
-        window: Window,
+        window: &Window,
+        command_buffer_allocator: &StandardCommandBufferAllocator,
         images: &[Arc<Image>],
         viewport: Viewport,
         image_upload_queue: Arc<Queue>,
@@ -143,16 +147,17 @@ impl ImGuiRenderer {
         };
 
         let mut uploads = AutoCommandBufferBuilder::primary(
-            &command_buffer_allocator,
+            command_buffer_allocator,
             image_upload_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )?;
 
         let textures = Textures::new();
 
-        let font_texture = Self::upload_font_texture(imgui.fonts(), device.clone(), queue.clone());
+        // let font_texture = Self::upload_font_texture(imgui.fonts(), device.clone(), queue.clone());
 
         Ok(ImGuiRenderer {
+            imgui,
             render_pass,
             pipeline,
         })
@@ -164,42 +169,5 @@ impl ImGuiRenderer {
         frame_index: usize,
     ) -> anyhow::Result<()> {
         Ok(())
-    }
-
-    fn upload_font_texture(
-        mut fonts: &imgui::FontAtlas,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-    ) -> Result<ImGuiTexture, Box<dyn std::error::Error>> {
-        let texture = fonts.build_rgba32_texture();
-
-        let (image, fut) = ImmutableImage::from_iter(
-            texture.data.iter().cloned(),
-            ImageDimensions::Dim2d {
-                width: texture.width,
-                height: texture.height,
-                array_layers: 1,
-            },
-            vulkano::image::MipmapsCount::One,
-            Format::R8G8B8A8Srgb,
-            queue.clone(),
-        )?;
-
-        fut.then_signal_fence_and_flush()?.wait(None)?;
-
-        let sampler = Sampler::simple_repeat_linear(device.clone());
-
-        fonts.tex_id = TextureId::from(usize::MAX);
-        Ok((ImageView::new(image)?, sampler))
-    }
-
-    fn lookup_texture(&self, texture_id: TextureId) -> Result<&Texture, RendererError> {
-        if texture_id.id() == usize::MAX {
-            Ok(&self.font_texture)
-        } else if let Some(texture) = self.textures.get(texture_id) {
-            Ok(texture)
-        } else {
-            Err(RendererError::BadTexture(texture_id))
-        }
     }
 }

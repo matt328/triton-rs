@@ -38,7 +38,6 @@ use crate::game::Transform;
 use super::{
     basic_renderer::BasicRenderer,
     helpers,
-    imgui::ImGuiRenderer,
     mesh::MeshBuilder,
     render_data::RenderData,
     renderer::Renderer,
@@ -71,7 +70,7 @@ pub struct RenderCoordinator {
 
     render_data: RenderData,
     basic_renderer: Box<dyn Renderer>,
-    imgui_renderer: ImGuiRenderer,
+    // imgui_renderer: ImGuiRenderer,
 }
 
 impl RenderCoordinator {
@@ -192,7 +191,7 @@ impl RenderCoordinator {
             viewport.clone(),
         )?);
 
-        let imgui_renderer = ImGuiRenderer::new(device.clone())?;
+        // let imgui_renderer = ImGuiRenderer::new(device.clone(), &window)?;
 
         Ok(RenderCoordinator {
             device,
@@ -209,7 +208,7 @@ impl RenderCoordinator {
             uniform_buffers,
             render_data: { Default::default() },
             basic_renderer,
-            imgui_renderer,
+            // imgui_renderer,
         })
     }
 
