@@ -13,8 +13,8 @@ cgmath = { version = "0.18" }
 gilrs = { version = "0.10.4", default-features = false, features = ["xinput"] }
 log = "0.4.17"
 log4rs = "1.2.0"
-imgui = "0.11.0"
-imgui-winit-support = "0.11.0"
+imgui = { path = "vendor/imgui/imgui" }
+imgui-winit-support = { path = "vendor/imgui/imgui-winit-support" }
 specs = { version = "0.20.0", features = ["specs-derive"] }
 tracing = "0.1.40"
 tracy-client = "0.16.4"

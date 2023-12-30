@@ -25,6 +25,7 @@ use vulkano::{
 use super::{
     helpers::{self},
     render_data::RenderData,
+    renderer::Renderer,
     shaders::{self, vs_position_color::FrameData},
 };
 
@@ -102,57 +103,6 @@ impl BasicRenderer {
         })
     }
 
-    pub fn resize(&mut self, images: &[Arc<Image>]) -> anyhow::Result<()> {
-        let format = images[0].format();
-        let render_pass = helpers::get_render_pass(self.device.clone(), format)?;
-
-        self.framebuffers =
-            helpers::get_framebuffers(images, render_pass.clone(), self.memory_allocator.clone())?;
-
-        Ok(())
-    }
-
-    pub fn record_command_buffer(
-        &self,
-        frame_index: usize,
-        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        render_data: &RenderData,
-    ) -> anyhow::Result<()> {
-        let descriptor_sets = self.create_descriptor_sets(render_data)?;
-
-        builder
-            .begin_render_pass(
-                RenderPassBeginInfo {
-                    clear_values: vec![Some([0.392, 0.494, 0.929, 1.0].into()), Some(1f32.into())],
-                    ..RenderPassBeginInfo::framebuffer(self.framebuffers[frame_index].clone())
-                },
-                SubpassBeginInfo {
-                    contents: SubpassContents::Inline,
-                    ..Default::default()
-                },
-            )?
-            .set_viewport(0, [self.viewport.clone()].into_iter().collect())?
-            .bind_pipeline_graphics(self.pipeline.clone())?
-            .bind_descriptor_sets(
-                vulkano::pipeline::PipelineBindPoint::Graphics,
-                self.pipeline.layout().clone(),
-                0,
-                descriptor_sets,
-            )?;
-
-        tracing::event!(Level::INFO, "{render_data:?}");
-        for data in render_data.render_iter() {
-            let (index, mesh) = data;
-            builder
-                .bind_vertex_buffers(0, mesh.vertex_buffer.clone())?
-                .bind_index_buffer(mesh.index_buffer.clone())?
-                .draw_indexed(mesh.index_buffer.len() as u32, 1, 0, 0, index)?;
-        }
-
-        builder.end_render_pass(Default::default())?;
-        Ok(())
-    }
-
     fn create_descriptor_sets(
         &self,
         render_data: &RenderData,
@@ -201,5 +151,57 @@ impl BasicRenderer {
         .context("creating uniform buffer descriptor set")?;
         uniform_set.exit();
         Ok(vec![uniform_buffer_set, object_data_buffer_set])
+    }
+}
+impl Renderer for BasicRenderer {
+    fn resize(&mut self, images: &[Arc<Image>]) -> anyhow::Result<()> {
+        let format = images[0].format();
+        let render_pass = helpers::get_render_pass(self.device.clone(), format)?;
+
+        self.framebuffers =
+            helpers::get_framebuffers(images, render_pass.clone(), self.memory_allocator.clone())?;
+
+        Ok(())
+    }
+
+    fn record_command_buffer(
+        &self,
+        frame_index: usize,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        render_data: &RenderData,
+    ) -> anyhow::Result<()> {
+        let descriptor_sets = self.create_descriptor_sets(render_data)?;
+
+        builder
+            .begin_render_pass(
+                RenderPassBeginInfo {
+                    clear_values: vec![Some([0.392, 0.494, 0.929, 1.0].into()), Some(1f32.into())],
+                    ..RenderPassBeginInfo::framebuffer(self.framebuffers[frame_index].clone())
+                },
+                SubpassBeginInfo {
+                    contents: SubpassContents::Inline,
+                    ..Default::default()
+                },
+            )?
+            .set_viewport(0, [self.viewport.clone()].into_iter().collect())?
+            .bind_pipeline_graphics(self.pipeline.clone())?
+            .bind_descriptor_sets(
+                vulkano::pipeline::PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
+                descriptor_sets,
+            )?;
+
+        tracing::event!(Level::INFO, "{render_data:?}");
+        for data in render_data.render_iter() {
+            let (index, mesh) = data;
+            builder
+                .bind_vertex_buffers(0, mesh.vertex_buffer.clone())?
+                .bind_index_buffer(mesh.index_buffer.clone())?
+                .draw_indexed(mesh.index_buffer.len() as u32, 1, 0, 0, index)?;
+        }
+
+        builder.end_render_pass(Default::default())?;
+        Ok(())
     }
 }

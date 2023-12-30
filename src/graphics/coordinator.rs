@@ -38,8 +38,10 @@ use crate::game::Transform;
 use super::{
     basic_renderer::BasicRenderer,
     helpers,
+    imgui::ImGuiRenderer,
     mesh::MeshBuilder,
     render_data::RenderData,
+    renderer::Renderer,
     shaders::{self, VertexPositionColor},
 };
 type MyJoinFuture = JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>;
@@ -68,7 +70,8 @@ pub struct RenderCoordinator {
     uniform_buffers: Vec<Subbuffer<shaders::vs_position_color::FrameData>>,
 
     render_data: RenderData,
-    basic_renderer: BasicRenderer,
+    basic_renderer: Box<dyn Renderer>,
+    imgui_renderer: ImGuiRenderer,
 }
 
 impl RenderCoordinator {
@@ -182,12 +185,14 @@ impl RenderCoordinator {
             })
             .collect::<anyhow::Result<Vec<BuffersType>>>()?;
 
-        let basic_renderer = BasicRenderer::new(
+        let basic_renderer = Box::new(BasicRenderer::new(
             device.clone(),
             memory_allocator.clone(),
             &images,
             viewport.clone(),
-        )?;
+        )?);
+
+        let imgui_renderer = ImGuiRenderer::new(device.clone())?;
 
         Ok(RenderCoordinator {
             device,
@@ -204,6 +209,7 @@ impl RenderCoordinator {
             uniform_buffers,
             render_data: { Default::default() },
             basic_renderer,
+            imgui_renderer,
         })
     }
 

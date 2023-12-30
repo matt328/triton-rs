@@ -39,8 +39,7 @@ impl RenderData {
         self.object_data.iter().map(|a| a.1).collect()
     }
 
-    /// Produces a vector containing a tuple of the mesh's index in the ObjectData array and the
-    /// mesh itself.
+    /// Produces a vector containing a tuple of the ObjectData's index, and the mesh itself.
     pub fn render_iter<'a>(&'a self) -> impl Iterator<Item = (u32, &'a BasicMesh)> {
         self.object_data
             .iter()

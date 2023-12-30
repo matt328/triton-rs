@@ -7,6 +7,8 @@ pub use self::shaders::{CUBE_INDICES, CUBE_VERTICES};
 mod basic_renderer;
 mod coordinator;
 mod helpers;
+mod imgui;
 mod mesh;
 mod render_data;
+mod renderer;
 mod shaders;
