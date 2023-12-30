@@ -96,9 +96,16 @@ impl<'a, 'b> App<'a, 'b> {
                         ..
                     } => match (state, button) {
                         (ElementState::Released, MouseButton::Left) => {
+                            #[cfg(not(target_os = "macos"))]
                             self.window
                                 .set_cursor_grab(winit::window::CursorGrabMode::Confined)
                                 .unwrap();
+
+                            #[cfg(target_os = "macos")]
+                            self.window
+                                .set_cursor_grab(winit::window::CursorGrabMode::Locked)
+                                .unwrap();
+
                             self.mouse_captured = true;
                             self.window.set_cursor_visible(false);
                         }
