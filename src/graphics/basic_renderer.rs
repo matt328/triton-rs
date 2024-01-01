@@ -170,6 +170,7 @@ impl Renderer for BasicRenderer {
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         render_data: &RenderData,
     ) -> anyhow::Result<()> {
+        let _span = span!(Level::INFO, "Record Scene").entered();
         let descriptor_sets = self.create_descriptor_sets(render_data)?;
 
         builder

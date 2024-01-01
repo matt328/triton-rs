@@ -17,7 +17,10 @@ use vulkano::{
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
-    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    instance::{
+        debug::{DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo},
+        Instance, InstanceCreateInfo, InstanceExtensions,
+    },
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::graphics::viewport::Viewport,
     swapchain::{
@@ -33,7 +36,7 @@ use vulkano::{
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::game::Transform;
+use crate::{game::Transform, graphics::imgui::ImGuiRenderer};
 
 use super::{
     basic_renderer::BasicRenderer,
@@ -70,7 +73,8 @@ pub struct RenderCoordinator {
 
     render_data: RenderData,
     basic_renderer: Box<dyn Renderer>,
-    // imgui_renderer: ImGuiRenderer,
+    imgui_renderer: ImGuiRenderer,
+    callback: Option<DebugUtilsMessenger>,
 }
 
 impl RenderCoordinator {
@@ -89,6 +93,18 @@ impl RenderCoordinator {
         };
 
         let instance = Instance::new(library, create_info).context("creating instance")?;
+
+        let callback = unsafe {
+            DebugUtilsMessenger::new(
+                instance.clone(),
+                DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
+                    |message_severity, message_type, callback_data| {
+                        log::info!("{:?}", callback_data.message);
+                    },
+                )),
+            )
+            .ok()
+        };
 
         let surface = Surface::from_window(instance.clone(), window.clone())?;
 
@@ -113,11 +129,13 @@ impl RenderCoordinator {
                     queue_family_index,
                     ..Default::default()
                 }],
-                enabled_extensions: device_extensions, // new
+                enabled_extensions: device_extensions,
                 ..Default::default()
             },
         )
         .context("creating logical device")?;
+
+        // TODO hashmap of queue type to Option<Queue> instead of a single queue
 
         let queue = queues.next().context("getting a queue")?;
 
@@ -191,7 +209,18 @@ impl RenderCoordinator {
             viewport.clone(),
         )?);
 
-        // let imgui_renderer = ImGuiRenderer::new(device.clone(), &window)?;
+        log::info!("Before ImGuiRenderer New");
+        let imgui_renderer = ImGuiRenderer::new(
+            device.clone(),
+            window.clone(),
+            &command_buffer_allocator,
+            memory_allocator.clone(),
+            &images,
+            viewport.clone(),
+            queue.clone(),
+        )?;
+
+        log::info!("After ImGuiRenderer New");
 
         Ok(RenderCoordinator {
             device,
@@ -208,7 +237,8 @@ impl RenderCoordinator {
             uniform_buffers,
             render_data: { Default::default() },
             basic_renderer,
-            // imgui_renderer,
+            imgui_renderer,
+            callback,
         })
     }
 
@@ -233,13 +263,6 @@ impl RenderCoordinator {
     }
 
     pub fn draw(&mut self) -> anyhow::Result<()> {
-        // Have to cleanup_finished once in awhile to prevent leaking resources
-        let cleanup_fence = &mut self.fences[self.previous_fence_i as usize].as_mut();
-        match cleanup_fence {
-            Some(fence) => fence.cleanup_finished(),
-            None => {}
-        };
-
         let is_zero_sized_window = self.dimensions.height == 0 || self.dimensions.width == 0;
 
         if (self.window_resized || self.need_swapchain_recreation) && !is_zero_sized_window {
@@ -290,13 +313,24 @@ impl RenderCoordinator {
             CommandBufferUsage::MultipleSubmit,
         )?;
 
+        let mut builder2 = AutoCommandBufferBuilder::primary(
+            &self.command_buffer_allocator,
+            self.queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        )?;
+
         self.basic_renderer.record_command_buffer(
             image_i as usize,
             &mut builder,
             &self.render_data,
         )?;
 
-        let command_buffer = builder.build()?;
+        self.imgui_renderer
+            .record_command_buffer(image_i as usize, &mut builder2)?;
+
+        let command_buffer = builder.build().context("Building Command Buffer")?;
+
+        let gui_command_buffer = builder2.build().context("Building Command Buffer2")?;
 
         self.render_data.reset_object_data();
 

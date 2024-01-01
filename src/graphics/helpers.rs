@@ -36,6 +36,7 @@ pub fn select_physical_device(
     surface: &Arc<Surface>,
     device_extensions: &DeviceExtensions,
 ) -> anyhow::Result<(Arc<PhysicalDevice>, u32)> {
+    // TODO: return a HashMap<QueueFlags, Option<u32>> holding the queue fam's available
     instance
         .enumerate_physical_devices()
         .expect("failed to enumerate physical devices")
@@ -46,6 +47,7 @@ pub fn select_physical_device(
                 .enumerate()
                 .position(|(i, q)| {
                     q.queue_flags.contains(QueueFlags::GRAPHICS)
+                        && q.queue_flags.contains(QueueFlags::TRANSFER)
                         && p.surface_support(i as u32, surface).unwrap_or(false)
                 })
                 .map(|q| (p, q as u32))

@@ -5,8 +5,14 @@ appenders:
     kind: console
     encoder:
       pattern: "{d(%l:%M:%S)} | {h({l:<5})} | {({f}:{L}):20.20} - {m}{n}"
+  file_out:
+    kind: file
+    path: "output.log"
+    encoder:
+      pattern: "{d(%l:%M:%S)} | {h({l:<5})} | {({f}:{L}):20.20} - {m}{n}"
 
 root:
-  level: debug
+  level: trace
   appenders:
     - stdout
+    - file_out

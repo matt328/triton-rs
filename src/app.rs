@@ -68,9 +68,12 @@ impl<'a, 'b> App<'a, 'b> {
                     Event::WindowEvent {
                         event: WindowEvent::RedrawRequested,
                         ..
-                    } => {
-                        let _ = self.game.update();
-                    }
+                    } => match self.game.update() {
+                        Ok(()) => {}
+                        Err(error) => {
+                            log::error!("{error}");
+                        }
+                    },
 
                     Event::WindowEvent {
                         event:
