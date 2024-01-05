@@ -12,7 +12,7 @@ appenders:
       pattern: "{d(%l:%M:%S)} | {h({l:<5})} | {({f}:{L}):20.20} - {m}{n}"
 
 root:
-  level: trace
+  level: debug
   appenders:
     - stdout
     - file_out

@@ -1,5 +1,3 @@
-use std::panic;
-
 use anyhow::Context;
 
 #[cfg(feature = "tracing")]

@@ -23,7 +23,7 @@ use vulkano::{
     device::{Device, Queue},
     format::Format,
     image::{
-        sampler::{Sampler, SamplerCreateInfo},
+        sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         view::ImageView,
         Image, ImageCreateInfo, ImageType, ImageUsage,
     },
@@ -32,7 +32,9 @@ use vulkano::{
     },
     pipeline::{
         graphics::{
-            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            color_blend::{
+                AttachmentBlend, ColorBlendAttachmentState, ColorBlendState, ColorComponents,
+            },
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
@@ -162,7 +164,11 @@ impl ImGuiRenderer {
                     multisample_state: Some(MultisampleState::default()),
                     color_blend_state: Some(ColorBlendState::with_attachment_states(
                         subpass.num_color_attachments(),
-                        ColorBlendAttachmentState::default(),
+                        ColorBlendAttachmentState {
+                            blend: Some(AttachmentBlend::alpha()),
+                            color_write_enable: true,
+                            color_write_mask: ColorComponents::all(),
+                        },
                     )),
                     depth_stencil_state: None,
                     subpass: Some(subpass.into()),
@@ -172,6 +178,14 @@ impl ImGuiRenderer {
         };
 
         let texture = imgui.fonts().build_rgba32_texture();
+
+        image::save_buffer(
+            "image.png",
+            texture.data,
+            texture.width,
+            texture.height,
+            image::ColorType::Rgba8,
+        )?;
 
         let format = Format::R8G8B8A8_SRGB;
         let extent = [texture.width, texture.height, 1];
@@ -231,7 +245,16 @@ impl ImGuiRenderer {
             .then_signal_fence_and_flush()?
             .wait(None)?;
 
-        let sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear())?;
+        let sampler = Sampler::new(
+            device.clone(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::ClampToBorder; 3],
+                lod: 0.0..=1.0,
+                ..Default::default()
+            },
+        )?;
 
         let font_texture = (ImageView::new_default(image)?, sampler);
 
@@ -368,6 +391,9 @@ impl ImGuiRenderer {
         let layout = self.pipeline.layout().set_layouts().get(0).context("")?;
 
         for draw_list in draw_data.draw_lists() {
+            let vtx = draw_list.vtx_buffer();
+            log::info!("vtx: {vtx:?}");
+
             let vertex_data: Vec<ImGuiVertex> = draw_list
                 .vtx_buffer()
                 .iter()

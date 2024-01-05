@@ -313,24 +313,16 @@ impl RenderCoordinator {
             CommandBufferUsage::MultipleSubmit,
         )?;
 
-        let mut builder2 = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
-            self.queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-        )?;
-
-        self.basic_renderer.record_command_buffer(
-            image_i as usize,
-            &mut builder,
-            &self.render_data,
-        )?;
+        // self.basic_renderer.record_command_buffer(
+        //     image_i as usize,
+        //     &mut builder,
+        //     &self.render_data,
+        // )?;
 
         self.imgui_renderer
-            .record_command_buffer(image_i as usize, &mut builder2)?;
+            .record_command_buffer(image_i as usize, &mut builder)?;
 
         let command_buffer = builder.build().context("Building Command Buffer")?;
-
-        let gui_command_buffer = builder2.build().context("Building Command Buffer2")?;
 
         self.render_data.reset_object_data();
 
