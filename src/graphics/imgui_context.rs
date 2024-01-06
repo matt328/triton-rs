@@ -125,6 +125,109 @@ impl ImGuiContext {
             )?
         };
 
+        let font_texture = {
+            let texture = imgui.fonts().build_rgba32_texture();
+
+            image::save_buffer(
+                "image.png",
+                texture.data,
+                texture.width,
+                texture.height,
+                image::ColorType::Rgba8,
+            )?;
+
+            let format = Format::R8G8B8A8_SRGB;
+            let extent = [texture.width, texture.height, 1];
+            let array_layers = 1;
+
+            let buffer_size = format.block_size()
+                * extent
+                    .into_iter()
+                    .map(|e| e as DeviceSize)
+                    .product::<DeviceSize>()
+                * array_layers as DeviceSize;
+
+            let upload_buffer: Subbuffer<[u8]> = Buffer::new_slice(
+                memory_allocator.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::TRANSFER_SRC,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                buffer_size,
+            )?;
+
+            upload_buffer.write()?.copy_from_slice(texture.data);
+
+            let image = Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format,
+                    extent,
+                    array_layers,
+                    usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )?;
+
+            let mut uploads = AutoCommandBufferBuilder::primary(
+                command_buffer_allocator,
+                image_upload_queue.queue_family_index(),
+                CommandBufferUsage::OneTimeSubmit,
+            )?;
+
+            uploads.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+                upload_buffer,
+                image.clone(),
+            ))?;
+
+            let command_buffer = uploads.build()?;
+
+            command_buffer
+                .execute(image_upload_queue.clone())?
+                .then_signal_fence_and_flush()?
+                .wait(None)?;
+
+            let sampler = Sampler::new(
+                device.clone(),
+                SamplerCreateInfo {
+                    mag_filter: Filter::Linear,
+                    min_filter: Filter::Linear,
+                    address_mode: [SamplerAddressMode::ClampToBorder; 3],
+                    lod: 0.0..=1.0,
+                    ..Default::default()
+                },
+            )?;
+
+            (ImageView::new_default(image)?, sampler)
+        };
+
+        let vertex_buffer_pool = SubbufferAllocator::new(
+            memory_allocator.clone(),
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::VERTEX_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+        );
+
+        let index_buffer_pool = SubbufferAllocator::new(
+            memory_allocator.clone(),
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::INDEX_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+        );
+
         Ok(ImGuiContext {
             imgui,
             platform,

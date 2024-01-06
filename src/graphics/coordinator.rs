@@ -18,7 +18,10 @@ use vulkano::{
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
     instance::{
-        debug::{DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo},
+        debug::{
+            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+            DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
+        },
         Instance, InstanceCreateInfo, InstanceExtensions,
     },
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
@@ -74,7 +77,7 @@ pub struct RenderCoordinator {
     render_data: RenderData,
     basic_renderer: Box<dyn Renderer>,
     imgui_renderer: ImGuiRenderer,
-    callback: Option<DebugUtilsMessenger>,
+    _callback: Option<DebugUtilsMessenger>,
 }
 
 impl RenderCoordinator {
@@ -87,21 +90,75 @@ impl RenderCoordinator {
             enabled_extensions: InstanceExtensions {
                 #[cfg(target_os = "macos")]
                 khr_portability_enumeration: true,
+                ext_debug_utils: true,
+                ext_debug_report: true,
                 ..extensions
             },
+            enabled_layers: vec!["VK_LAYER_KHRONOS_validation".to_owned()],
             ..Default::default()
         };
 
         let instance = Instance::new(library, create_info).context("creating instance")?;
 
-        let callback = unsafe {
+        let _callback = unsafe {
             DebugUtilsMessenger::new(
                 instance.clone(),
-                DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
-                    |message_severity, message_type, callback_data| {
-                        log::info!("{:?}", callback_data.message);
-                    },
-                )),
+                DebugUtilsMessengerCreateInfo {
+                    message_severity: DebugUtilsMessageSeverity::ERROR
+                        | DebugUtilsMessageSeverity::WARNING
+                        | DebugUtilsMessageSeverity::INFO
+                        | DebugUtilsMessageSeverity::VERBOSE,
+                    message_type: DebugUtilsMessageType::GENERAL
+                        | DebugUtilsMessageType::VALIDATION
+                        | DebugUtilsMessageType::PERFORMANCE,
+                    ..DebugUtilsMessengerCreateInfo::user_callback(
+                        DebugUtilsMessengerCallback::new(
+                            |message_severity, message_type, callback_data| {
+                                let severity = if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::ERROR)
+                                {
+                                    "error"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::WARNING)
+                                {
+                                    "warning"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::INFO)
+                                {
+                                    "information"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::VERBOSE)
+                                {
+                                    "verbose"
+                                } else {
+                                    panic!("no-impl");
+                                };
+
+                                let ty = if message_type.intersects(DebugUtilsMessageType::GENERAL)
+                                {
+                                    "general"
+                                } else if message_type.intersects(DebugUtilsMessageType::VALIDATION)
+                                {
+                                    "validation"
+                                } else if message_type
+                                    .intersects(DebugUtilsMessageType::PERFORMANCE)
+                                {
+                                    "performance"
+                                } else {
+                                    panic!("no-impl");
+                                };
+
+                                log::debug!(
+                                    "{} {} {}: {}",
+                                    callback_data.message_id_name.unwrap_or("unknown"),
+                                    ty,
+                                    severity,
+                                    callback_data.message
+                                );
+                            },
+                        ),
+                    )
+                },
             )
             .ok()
         };
@@ -209,7 +266,6 @@ impl RenderCoordinator {
             viewport.clone(),
         )?);
 
-        log::info!("Before ImGuiRenderer New");
         let imgui_renderer = ImGuiRenderer::new(
             device.clone(),
             window.clone(),
@@ -219,8 +275,6 @@ impl RenderCoordinator {
             viewport.clone(),
             queue.clone(),
         )?;
-
-        log::info!("After ImGuiRenderer New");
 
         Ok(RenderCoordinator {
             device,
@@ -238,7 +292,7 @@ impl RenderCoordinator {
             render_data: { Default::default() },
             basic_renderer,
             imgui_renderer,
-            callback,
+            _callback,
         })
     }
 
@@ -313,14 +367,14 @@ impl RenderCoordinator {
             CommandBufferUsage::MultipleSubmit,
         )?;
 
-        // self.basic_renderer.record_command_buffer(
-        //     image_i as usize,
-        //     &mut builder,
-        //     &self.render_data,
-        // )?;
+        self.basic_renderer.record_command_buffer(
+            image_i as usize,
+            &mut builder,
+            &self.render_data,
+        )?;
 
-        self.imgui_renderer
-            .record_command_buffer(image_i as usize, &mut builder)?;
+        // self.imgui_renderer
+        //     .record_command_buffer(image_i as usize, &mut builder)?;
 
         let command_buffer = builder.build().context("Building Command Buffer")?;
 
@@ -395,7 +449,7 @@ impl RenderCoordinator {
             self.viewport.extent = self.dimensions.into();
         }
 
-        let result = self.basic_renderer.resize(&new_images);
+        let result = Ok(()); // self.basic_renderer.resize(&new_images);
 
         self.window_resized = false;
         result

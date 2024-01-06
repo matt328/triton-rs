@@ -114,7 +114,7 @@ impl ImGuiRenderer {
                 color: {
                     format: format,
                     samples: 1,
-                    load_op: Load,
+                    load_op: Clear,
                     store_op: Store,
                 },
             },
@@ -391,9 +391,6 @@ impl ImGuiRenderer {
         let layout = self.pipeline.layout().set_layouts().get(0).context("")?;
 
         for draw_list in draw_data.draw_lists() {
-            let vtx = draw_list.vtx_buffer();
-            log::info!("vtx: {vtx:?}");
-
             let vertex_data: Vec<ImGuiVertex> = draw_list
                 .vtx_buffer()
                 .iter()
