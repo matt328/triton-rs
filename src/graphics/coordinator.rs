@@ -17,7 +17,13 @@ use vulkano::{
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
     image::ImageUsage,
-    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    instance::{
+        debug::{
+            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+            DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
+        },
+        Instance, InstanceCreateInfo, InstanceExtensions,
+    },
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::graphics::viewport::Viewport,
     swapchain::{
@@ -69,11 +75,14 @@ pub struct RenderCoordinator {
 
     render_data: RenderData,
     basic_renderer: BasicRenderer,
+    _debug_callback: Option<DebugUtilsMessenger>,
 }
 
 impl RenderCoordinator {
     pub fn new(extensions: InstanceExtensions, window: Arc<Window>) -> anyhow::Result<Self> {
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
+
+        let layers = vec!["VK_LAYER_KHRONOS_validation".to_owned()];
 
         let create_info = InstanceCreateInfo {
             #[cfg(target_os = "macos")]
@@ -81,12 +90,77 @@ impl RenderCoordinator {
             enabled_extensions: InstanceExtensions {
                 #[cfg(target_os = "macos")]
                 khr_portability_enumeration: true,
+                ext_debug_utils: true,
                 ..extensions
             },
+            enabled_layers: layers,
             ..Default::default()
         };
 
         let instance = Instance::new(library, create_info).context("creating instance")?;
+
+        let _debug_callback = unsafe {
+            DebugUtilsMessenger::new(
+                instance.clone(),
+                DebugUtilsMessengerCreateInfo {
+                    message_severity: DebugUtilsMessageSeverity::ERROR
+                        | DebugUtilsMessageSeverity::WARNING
+                        | DebugUtilsMessageSeverity::INFO
+                        | DebugUtilsMessageSeverity::VERBOSE,
+                    message_type: DebugUtilsMessageType::GENERAL
+                        | DebugUtilsMessageType::VALIDATION
+                        | DebugUtilsMessageType::PERFORMANCE,
+                    ..DebugUtilsMessengerCreateInfo::user_callback(
+                        DebugUtilsMessengerCallback::new(
+                            |message_severity, message_type, callback_data| {
+                                let severity = if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::ERROR)
+                                {
+                                    "error"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::WARNING)
+                                {
+                                    "warning"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::INFO)
+                                {
+                                    "information"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::VERBOSE)
+                                {
+                                    "verbose"
+                                } else {
+                                    panic!("no-impl");
+                                };
+
+                                let ty = if message_type.intersects(DebugUtilsMessageType::GENERAL)
+                                {
+                                    "general"
+                                } else if message_type.intersects(DebugUtilsMessageType::VALIDATION)
+                                {
+                                    "validation"
+                                } else if message_type
+                                    .intersects(DebugUtilsMessageType::PERFORMANCE)
+                                {
+                                    "performance"
+                                } else {
+                                    panic!("no-impl");
+                                };
+
+                                log::debug!(
+                                    "{} {} {}: {}",
+                                    callback_data.message_id_name.unwrap_or("unknown"),
+                                    ty,
+                                    severity,
+                                    callback_data.message
+                                );
+                            },
+                        ),
+                    )
+                },
+            )
+            .ok()
+        };
 
         let surface = Surface::from_window(instance.clone(), window.clone())?;
 
@@ -204,6 +278,7 @@ impl RenderCoordinator {
             uniform_buffers,
             render_data: { Default::default() },
             basic_renderer,
+            _debug_callback,
         })
     }
 
