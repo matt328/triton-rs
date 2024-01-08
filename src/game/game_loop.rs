@@ -1,6 +1,6 @@
 use log::info;
 use std::{sync::Arc, time::Instant};
-use tracing::{event, span, Level};
+use tracing::{span, Level};
 use vulkano::instance::InstanceExtensions;
 use winit::{dpi::PhysicalSize, event::Event, window::Window};
 
