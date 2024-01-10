@@ -55,7 +55,7 @@ impl RenderPipeline {
                     let cb = Arc::new(self.draw_pipeline.draw([dims[0], dims[1]]));
                     draw_pass.execute(cb);
                 }
-                Pass::Finished(af) => {
+                Pass::Finish(af) => {
                     after_future = Some(af);
                 }
             }

@@ -166,7 +166,7 @@ impl<'a> Frame<'a> {
             self.num_pass += 1;
             current_pass
         } {
-            0 => Some(Pass::Deferred(DrawPass { frame: self })),
+            0 => Some(Pass::Deferred(BasicAfPass { frame: self })),
             1 => {
                 self.command_buffer_builder
                     .as_mut()
@@ -180,7 +180,7 @@ impl<'a> Frame<'a> {
                     .unwrap()
                     .then_execute(self.system.gfx_queue.clone(), command_buffer)
                     .unwrap();
-                Some(Pass::Finished(Box::new(after_main_cb)))
+                Some(Pass::Finish(Box::new(after_main_cb)))
             }
             _ => None,
         }
@@ -188,15 +188,17 @@ impl<'a> Frame<'a> {
 }
 
 pub enum Pass<'f, 's: 'f> {
-    Deferred(DrawPass<'f, 's>),
-    Finished(Box<dyn GpuFuture>),
+    Deferred(BasicAfPass<'f, 's>),
+    Finish(Box<dyn GpuFuture>),
 }
 
-pub struct DrawPass<'f, 's: 'f> {
+/// This pass is basic AF because all it really does is execute the
+/// (Secondary) CommandBuffer from it's frame
+pub struct BasicAfPass<'f, 's: 'f> {
     frame: &'f mut Frame<'s>,
 }
 
-impl<'f, 's: 'f> DrawPass<'f, 's> {
+impl<'f, 's: 'f> BasicAfPass<'f, 's> {
     #[inline]
     pub fn execute<C>(&mut self, command_buffer: Arc<C>)
     where
