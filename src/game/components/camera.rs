@@ -7,7 +7,7 @@ use tracing::{event, Level};
 
 use crate::game::context::InputStateResource;
 
-use super::ResizeEvents;
+use super::{CurrentWindowSize, ResizeEvents};
 
 #[derive(Component, Debug, Clone, Copy)]
 #[storage(VecStorage)]
@@ -55,21 +55,17 @@ pub struct CameraSystem;
 
 impl<'a> System<'a> for CameraSystem {
     type SystemData = (
-        Read<'a, ResizeEvents>,
+        Read<'a, CurrentWindowSize>,
         Read<'a, InputStateResource>,
         WriteStorage<'a, Camera>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (resize_events, input_state, mut cameras) = data;
+        let (current_window_size, input_state, mut cameras) = data;
 
-        let aspect = {
-            if !resize_events.0.is_empty() {
-                Some(resize_events.0[0].width as f32 / resize_events.0[0].height as f32)
-            } else {
-                None
-            }
-        };
+        let aspect = current_window_size
+            .0
+            .map(|ps| ps.width as f32 / ps.height as f32);
 
         let delta_x = input_state
             .0

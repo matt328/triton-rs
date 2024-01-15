@@ -82,7 +82,7 @@ pub fn main() -> anyhow::Result<()> {
 
                 Event::AboutToWait => {
                     #[cfg(feature = "tracing")]
-                    let _span = span!(Level::INFO, "RedrawRequested").entered();
+                    let _span = span!(Level::INFO, "Event::AboutToWait").entered();
                     game_loop.window_size().map(|image_extent| {
                         let image_extent_arr: [u32; 2] = image_extent.into();
                         if image_extent_arr.contains(&0) {

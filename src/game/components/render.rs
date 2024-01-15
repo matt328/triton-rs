@@ -2,12 +2,12 @@ use log::error;
 use specs::{Component, Read, ReadStorage, System, VecStorage, Write};
 use tracing::{event, Level};
 
-use crate::graphics::RenderCoordinator;
+use crate::Renderer;
 
 use super::{
     resources::{BlendFactor, ResizeEvents},
     transform::Transform,
-    ActiveCamera, Camera,
+    ActiveCamera, Camera, CurrentWindowId, CurrentWindowSize,
 };
 
 #[derive(Component, Debug)]
@@ -17,12 +17,12 @@ pub struct Renderable {
 }
 
 pub struct RenderSystem {
-    coordinator: RenderCoordinator,
+    renderer: Renderer,
 }
 
 impl RenderSystem {
-    pub fn new(coordinator: RenderCoordinator) -> Self {
-        RenderSystem { coordinator }
+    pub fn new(renderer: Renderer) -> Self {
+        RenderSystem { renderer }
     }
 }
 
@@ -31,27 +31,39 @@ impl<'a> System<'a> for RenderSystem {
         Read<'a, BlendFactor>,
         Option<Read<'a, ActiveCamera>>,
         Write<'a, ResizeEvents>,
+        Write<'a, CurrentWindowSize>,
+        Write<'a, CurrentWindowId>,
         ReadStorage<'a, Transform>,
         ReadStorage<'a, Camera>,
         ReadStorage<'a, Renderable>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (_blending_factor, active_camera, mut resize_events, transforms, cameras, meshes) =
-            data;
+        let (
+            _blending_factor,
+            active_camera,
+            mut resize_events,
+            mut current_window_size,
+            mut current_window_id,
+            transforms,
+            cameras,
+            meshes,
+        ) = data;
 
         // Handle Resize Events
-        if !resize_events.0.is_empty() {
+        if !resize_events.0 {
             event!(Level::INFO, "render system resize event");
-            self.coordinator.window_resized(resize_events.0[0]);
-            resize_events.0.clear();
+            let _ = self.renderer.resize();
+            resize_events.0 = false;
         }
+
+        current_window_size.0 = self.renderer.window_size();
+        current_window_id.0 = self.renderer.window_id();
 
         // Apply Active Camera's matrices
         if let Some(active_cam) = active_camera {
             let camera = cameras.get(active_cam.0).unwrap();
-            self.coordinator
-                .set_camera_params(camera.calculate_matrices());
+            self.renderer.set_camera_params(camera.calculate_matrices());
         }
 
         // Consider accumulating all the renderables into a list here
@@ -60,9 +72,9 @@ impl<'a> System<'a> for RenderSystem {
         use specs::Join;
         for (transform, mesh) in (&transforms, &meshes).join() {
             // Apply blending_factor to Transforms before passing them to renderer
-            self.coordinator.enqueue_mesh(mesh.mesh_id, *transform);
+            self.renderer.enqueue_mesh(mesh.mesh_id, *transform);
         }
-        let result: anyhow::Result<()> = self.coordinator.draw();
+        let result: anyhow::Result<()> = self.renderer.render();
         match result {
             Ok(_) => {}
             Err(e) => {

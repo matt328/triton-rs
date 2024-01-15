@@ -4,7 +4,9 @@ use anyhow::Context;
 use gilrs::Axis;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use tracing::{span, Level};
-use winit::{dpi::PhysicalSize, event::Event, event_loop::EventLoop};
+use winit::{
+    dpi::PhysicalSize, event::Event, event_loop::EventLoop, keyboard::KeyCode, window::WindowId,
+};
 
 use crate::Renderer;
 
@@ -12,7 +14,8 @@ use super::{
     components::{
         render::{RenderSystem, Renderable},
         transform::{Transform, TransformSystem},
-        ActiveCamera, BlendFactor, Camera, CameraSystem, ResizeEvents,
+        ActiveCamera, BlendFactor, Camera, CameraSystem, CurrentWindowId, CurrentWindowSize,
+        ResizeEvents,
     },
     input::{
         ActionDescriptor, ActionKind, ActionMap, ActionState, GamepadSource, InputSystem,
@@ -26,21 +29,23 @@ pub struct InputStateResource(pub HashMap<String, ActionState>);
 pub struct GameContext {
     input_system: InputSystem,
     world: World,
-    fixed_update_dispatcher: Dispatcher<'static, 'static>,
-    render_dispatcher: Dispatcher<'static, 'static>,
+    fixed_update_dispatcher: Dispatcher<'static, 'static>, //TODO: this is probably wrong
+    render_dispatcher: Dispatcher<'static, 'static>,       // TODO: this is probably wrong
 }
 
 impl GameContext {
     pub fn new(event_loop: &EventLoop<()>) -> anyhow::Result<Self> {
-        let mut renderer = Renderer::new(event_loop)?;
-        let extent: [f32; 2] = renderer
-            .window_size()
-            .context("getting window size")?
-            .into();
+        let renderer = Renderer::new(event_loop)?;
+        let extent_physical_size = renderer.window_size().context("getting window size")?;
+        let extent: [f32; 2] = extent_physical_size.into();
+
+        let window_id = renderer.window_id();
 
         let mut world = World::new();
 
-        world.insert(ResizeEvents(Vec::new()));
+        world.insert(ResizeEvents(false));
+        world.insert(CurrentWindowSize(Some(extent_physical_size)));
+        world.insert(CurrentWindowId(window_id));
         world.insert(InputStateResource(HashMap::new()));
 
         let mesh_id = 1; // renderer.create_mesh(CUBE_VERTICES.into(), CUBE_INDICES.into())?;
@@ -87,10 +92,7 @@ impl GameContext {
 
         world.insert(ActiveCamera(cam));
 
-        world
-            .write_resource::<ResizeEvents>()
-            .0
-            .push(renderer.window_size().context("getting window size")?);
+        world.write_resource::<ResizeEvents>().0 = true;
 
         let walk_forward_action = "walk_forward";
         let walk_backward_action = "walk_backward";
@@ -153,8 +155,8 @@ impl GameContext {
             .add_action_map(
                 "main",
                 ActionMap::new()
-                    // .bind(Source::Keyboard(KeyCode::KeyW), walk_forward_action)
-                    // .bind(Source::Keyboard(KeyCode::ArrowUp), walk_forward_action)
+                    .bind(Source::Keyboard(KeyCode::KeyW), walk_forward_action)
+                    .bind(Source::Keyboard(KeyCode::ArrowUp), walk_forward_action)
                     .bind(
                         Source::Gamepad(GamepadSource::Axis(Axis::LeftStickY)),
                         walk_forward_action,
@@ -163,14 +165,14 @@ impl GameContext {
                         Source::Gamepad(GamepadSource::Axis(Axis::LeftStickX)),
                         strafe_right_action,
                     )
-                    // .bind(Source::Keyboard(KeyCode::KeyS), walk_backward_action)
-                    // .bind(Source::Keyboard(KeyCode::ArrowDown), walk_backward_action)
-                    // .bind(Source::Keyboard(KeyCode::KeyA), strafe_left_action)
-                    // .bind(Source::Keyboard(KeyCode::ArrowLeft), strafe_left_action)
-                    // .bind(Source::Keyboard(KeyCode::KeyD), strafe_right_action)
-                    // .bind(Source::Keyboard(KeyCode::ArrowRight), strafe_right_action)
-                    // .bind(Source::Keyboard(KeyCode::KeyQ), move_up_action)
-                    // .bind(Source::Keyboard(KeyCode::KeyZ), move_down_action)
+                    .bind(Source::Keyboard(KeyCode::KeyS), walk_backward_action)
+                    .bind(Source::Keyboard(KeyCode::ArrowDown), walk_backward_action)
+                    .bind(Source::Keyboard(KeyCode::KeyA), strafe_left_action)
+                    .bind(Source::Keyboard(KeyCode::ArrowLeft), strafe_left_action)
+                    .bind(Source::Keyboard(KeyCode::KeyD), strafe_right_action)
+                    .bind(Source::Keyboard(KeyCode::ArrowRight), strafe_right_action)
+                    .bind(Source::Keyboard(KeyCode::KeyQ), move_up_action)
+                    .bind(Source::Keyboard(KeyCode::KeyZ), move_down_action)
                     .bind(
                         Source::Gamepad(GamepadSource::Axis(Axis::RightStickY)),
                         look_vertical_action,
@@ -222,7 +224,16 @@ impl GameContext {
         Ok(())
     }
 
-    pub fn window_resized(&mut self, new_size: PhysicalSize<u32>) {
-        self.world.write_resource::<ResizeEvents>().0.push(new_size);
+    pub fn resize(&mut self) -> anyhow::Result<()> {
+        self.world.write_resource::<ResizeEvents>().0 = true;
+        Ok(())
+    }
+
+    pub fn window_size(&self) -> Option<PhysicalSize<u32>> {
+        self.world.read_resource::<CurrentWindowSize>().0
+    }
+
+    pub fn window_id(&self) -> Option<WindowId> {
+        self.world.read_resource::<CurrentWindowId>().0
     }
 }

@@ -14,7 +14,7 @@ use vulkano_util::{
 };
 use winit::{dpi::PhysicalSize, event_loop::EventLoop, window::WindowId};
 
-use crate::{FrameSystem, GeometrySystem, LightingPass, Pass};
+use crate::{game::Transform, FrameSystem, GeometrySystem, LightingPass, Pass};
 
 pub struct Renderer {
     context: VulkanoContext,
@@ -80,6 +80,10 @@ impl Renderer {
             geometry_system,
         })
     }
+
+    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: Transform) {}
+
+    pub fn set_camera_params(&self, matrices: (Matrix4<f32>, Matrix4<f32>)) {}
 
     pub fn resize(&mut self) -> anyhow::Result<()> {
         if let Some(renderer) = self.windows.get_primary_renderer_mut() {
