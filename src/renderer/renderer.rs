@@ -1,18 +1,30 @@
-use anyhow::Context;
-use cgmath::{Matrix4, SquareMatrix};
-use vulkano::sync::{self, GpuFuture};
+use std::sync::Arc;
+
+use anyhow::{anyhow, Context};
+use cgmath::{Matrix4, SquareMatrix, Vector3};
+use vulkano::{
+    command_buffer::allocator::{
+        StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
+    },
+    sync::{self, GpuFuture},
+};
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
     window::{VulkanoWindows, WindowDescriptor},
 };
 use winit::{dpi::PhysicalSize, event_loop::EventLoop, window::WindowId};
 
-use crate::Pass;
+use crate::{FrameSystem, GeometrySystem, LightingPass, Pass};
 
 pub struct Renderer {
     context: VulkanoContext,
     windows: VulkanoWindows,
+    frame_system: FrameSystem,
+    geometry_system: GeometrySystem,
 }
+
+#[cfg(feature = "tracing")]
+use tracing_tracy::client::frame_mark;
 
 impl Renderer {
     pub fn new(event_loop: &EventLoop<()>) -> anyhow::Result<Self> {
@@ -27,79 +39,130 @@ impl Renderer {
 
         let queue = windows
             .get_primary_renderer()
-            .context("get primary renderer")?
+            .context("geting primary renderer")?
             .graphics_queue();
 
         let image_format = windows
             .get_primary_renderer()
-            .context("get primary renderer")?
+            .context("geting primary renderer")?
             .swapchain_format();
 
-        Ok(Renderer { context, windows })
+        let memory_allocator = context.memory_allocator();
+
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            context.device().clone(),
+            StandardCommandBufferAllocatorCreateInfo {
+                secondary_buffer_count: 32,
+                ..Default::default()
+            },
+        ));
+
+        let frame_system = FrameSystem::new(
+            queue.clone(),
+            image_format,
+            memory_allocator.clone(),
+            command_buffer_allocator.clone(),
+        )
+        .context("creating FrameSystem")?;
+
+        let geometry_system = GeometrySystem::new(
+            queue.clone(),
+            frame_system.deferred_subpass(),
+            memory_allocator.clone(),
+            command_buffer_allocator.clone(),
+        )
+        .context("creating Geometry System")?;
+
+        Ok(Renderer {
+            context,
+            windows,
+            frame_system,
+            geometry_system,
+        })
     }
 
-    pub fn resize(&self) {}
-
-    pub fn request_redraw(&self) {}
-
-    pub fn window_size(&self) -> PhysicalSize<u32> {
-        PhysicalSize {
-            width: 0,
-            height: 0,
+    pub fn resize(&mut self) -> anyhow::Result<()> {
+        if let Some(renderer) = self.windows.get_primary_renderer_mut() {
+            renderer.resize();
+            Ok(())
+        } else {
+            Err(anyhow!("No Primary Renderer available"))
         }
     }
 
-    pub fn window_id(&self) -> WindowId {
-        let f: u64 = 0;
-        WindowId::from(f)
+    pub fn request_redraw(&self) -> anyhow::Result<()> {
+        if let Some(window) = self.windows.get_primary_window() {
+            window.request_redraw();
+            Ok(())
+        } else {
+            Err(anyhow!("No Primary Window available"))
+        }
     }
 
-    pub fn render(&self) -> anyhow::Result<()> {
-        let mut renderer = self
+    pub fn window_size(&self) -> Option<PhysicalSize<u32>> {
+        self.windows.get_primary_window().map(|w| w.inner_size())
+    }
+
+    pub fn window_id(&self) -> Option<WindowId> {
+        self.windows.primary_window_id()
+    }
+
+    pub fn render(&mut self) -> anyhow::Result<()> {
+        let renderer = self
             .windows
-            .get_primary_renderer()
+            .get_primary_renderer_mut()
             .context("getting primary renderer")?;
+
         let acquire_future = match renderer.acquire() {
             Ok(future) => future,
             Err(vulkano::VulkanError::OutOfDate) => {
                 renderer.resize();
                 sync::now(self.context.device().clone()).boxed()
             }
-            Err(e) => panic!("Failed to acquire swapchain future: {}", e),
+            Err(e) => return Err(anyhow!("Unexpected error acquiring swapchain image: {}", e)),
         };
 
-        if let Ok(mut frame) = frame_system.frame(
+        let mut frame = self.frame_system.frame(
             acquire_future,
             renderer.swapchain_image_view().clone(),
             Matrix4::identity(),
-        ) {
-            let mut after_future: Option<Box<dyn GpuFuture>> = None;
+        )?;
 
-            // TODO figure out how winit decides to handle Results today
-            while let Some(pass) = frame.next_pass().unwrap() {
-                match pass {
-                    Pass::Deferred(mut draw_pass) => {
-                        let cb = geometry_system
-                            .draw(draw_pass.viewport_dimensions())
-                            .context("drawing geometry")
-                            .unwrap();
+        let mut after_future: Option<Box<dyn GpuFuture>> = None;
 
-                        if let Err(e) = draw_pass.execute(cb) {
-                            log::error!("{}", e);
-                        }
-                    }
-                    Pass::Lighting(lighting) => {
-                        if let Err(e) = render_lighting(lighting) {
-                            log::error!("{}", e);
-                        }
-                    }
-                    Pass::Finished(af) => {
-                        after_future = Some(af);
-                    }
+        while let Some(pass) = frame.next_pass()? {
+            match pass {
+                Pass::Deferred(mut draw_pass) => {
+                    let cb = self
+                        .geometry_system
+                        .draw(draw_pass.viewport_dimensions())
+                        .context("drawing geometry")?;
+                    draw_pass.execute(cb)?;
+                }
+                Pass::Lighting(lighting) => {
+                    Self::render_lighting(lighting)?;
+                }
+                Pass::Finished(af) => {
+                    after_future = Some(af);
                 }
             }
-            renderer.present(after_future.unwrap(), true);
         }
+        renderer.present(
+            after_future.context("getting renderpass finish future")?,
+            true,
+        );
+
+        #[cfg(feature = "tracing")]
+        frame_mark();
+        Ok(())
+    }
+
+    fn render_lighting(mut lighting: LightingPass<'_, '_>) -> anyhow::Result<()> {
+        lighting.ambient_light([0.1, 0.1, 0.1])?;
+        lighting.directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6])?;
+        lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0])?;
+        lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0])?;
+        lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0])?;
         Ok(())
     }
 }

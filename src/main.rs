@@ -1,61 +1,61 @@
-use std::sync::Arc;
-
 use anyhow::Context;
-use cgmath::{Matrix4, SquareMatrix, Vector3};
-use triton::{FrameSystem, GeometrySystem, LightingPass, Pass, Renderer};
-use vulkano::{
-    command_buffer::allocator::{
-        StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
-    },
-    sync::{self, GpuFuture},
-};
-use vulkano_util::{
-    context::{VulkanoConfig, VulkanoContext},
-    window::{VulkanoWindows, WindowDescriptor},
-};
+use triton::Renderer;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
 };
 
+#[cfg(feature = "tracing")]
+use tracing::{span, Level};
+#[cfg(feature = "tracing")]
+use tracing_subscriber::layer::SubscriberExt;
+
 pub fn main() -> anyhow::Result<()> {
+    log4rs::init_file("log4rs.yml", Default::default()).context("Could not configure logger")?;
+
+    #[cfg(feature = "tracing")]
+    log::info!("Tracing enabled");
+
+    #[cfg(feature = "tracing")]
+    #[global_allocator]
+    static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
+        tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
+
+    #[cfg(feature = "tracing")]
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
+    )
+    .expect("setting up tracing");
+
+    #[cfg(feature = "tracing")]
+    let _root = span!(Level::INFO, "root").entered();
+
     let event_loop = EventLoop::new();
 
-    let triton_renderer = Renderer::new(&event_loop)?;
+    let mut triton_renderer = Renderer::new(&event_loop)?;
 
-    let memory_allocator = context.memory_allocator();
-
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        context.device().clone(),
-        StandardCommandBufferAllocatorCreateInfo {
-            secondary_buffer_count: 32,
-            ..Default::default()
-        },
-    ));
-
-    let mut frame_system = FrameSystem::new(
-        queue.clone(),
-        image_format,
-        memory_allocator.clone(),
-        command_buffer_allocator.clone(),
-    )
-    .context("creating FrameSystem")?;
-
-    let geometry_system = GeometrySystem::new(
-        queue.clone(),
-        frame_system.deferred_subpass(),
-        memory_allocator.clone(),
-        command_buffer_allocator.clone(),
-    )?;
+    log::info!("Constructed Renderer");
 
     event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent { event, window_id } if window_id == triton_renderer.window_id() => {
+        Event::WindowEvent { event, window_id }
+            if window_id == triton_renderer.window_id().unwrap() =>
+        {
             match event {
                 WindowEvent::Resized(_) => {
-                    triton_renderer.resize();
+                    if let Err(e) = triton_renderer
+                        .resize()
+                        .context("handling WindowEvent::Resized")
+                    {
+                        log::warn!("{}", e);
+                    }
                 }
                 WindowEvent::ScaleFactorChanged { .. } => {
-                    triton_renderer.resize();
+                    if let Err(e) = triton_renderer
+                        .resize()
+                        .context("handling WindowEvent::ScaleFactorChanged")
+                    {
+                        log::warn!("{}", e);
+                    }
                 }
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
@@ -68,32 +68,47 @@ pub fn main() -> anyhow::Result<()> {
             event: WindowEvent::CloseRequested,
             window_id,
             ..
-        } if window_id == triton_renderer.window_id() => {
-            *control_flow = ControlFlow::Exit;
+        } => {
+            if let Some(current_window_id) = triton_renderer.window_id() {
+                if window_id == current_window_id {
+                    *control_flow = ControlFlow::Exit;
+                }
+            }
         }
 
-        Event::RedrawRequested(window_id) if window_id == triton_renderer.window_id() => {
-            let image_extent: [u32; 2] = triton_renderer.window_size().into();
-            if image_extent.contains(&0) {
-                return;
-            }
-
-            triton_renderer.render();
+        Event::RedrawRequested(window_id) => {
+            #[cfg(feature = "tracing")]
+            let _span = span!(Level::INFO, "RedrawRequested").entered();
+            triton_renderer
+                .window_id()
+                .and_then(|current_window_id| {
+                    if window_id == current_window_id {
+                        Some(())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|_| triton_renderer.window_size())
+                .map(|image_extent| {
+                    let image_extent_arr: [u32; 2] = image_extent.into();
+                    if image_extent_arr.contains(&0) {
+                        return;
+                    }
+                    if let Err(e) = triton_renderer.render().context("rendering") {
+                        log::error!("{}", e);
+                    }
+                });
         }
 
         Event::MainEventsCleared => {
-            triton_renderer.request_redraw();
+            if let Err(e) = triton_renderer
+                .request_redraw()
+                .context("requesting redraw")
+            {
+                log::warn!("{}", e);
+            }
         }
 
         _ => (),
     })
-}
-
-fn render_lighting(mut lighting: LightingPass<'_, '_>) -> anyhow::Result<()> {
-    lighting.ambient_light([0.1, 0.1, 0.1])?;
-    lighting.directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6])?;
-    lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0])?;
-    lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0])?;
-    lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0])?;
-    Ok(())
 }
