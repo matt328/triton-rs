@@ -1,0 +1,3 @@
+[submodule "vendor/vulkano"]
+	path = vendor/vulkano
+	url = git@github.com:vulkano-rs/vulkano.git

@@ -1,5 +1,5 @@
 use anyhow::Context;
-use triton::Renderer;
+use triton::GameLoop;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -30,85 +30,71 @@ pub fn main() -> anyhow::Result<()> {
     #[cfg(feature = "tracing")]
     let _root = span!(Level::INFO, "root").entered();
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new()?;
+    event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut triton_renderer = Renderer::new(&event_loop)?;
+    let mut game_loop = GameLoop::new(&event_loop).context("creating game loop")?;
 
-    log::info!("Constructed Renderer");
+    log::info!("Constructed Game Loop");
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent { event, window_id }
-            if window_id == triton_renderer.window_id().unwrap() =>
-        {
+    event_loop
+        .run(move |event, elwt| {
+            game_loop.process_winit_event(&event, false);
+
             match event {
-                WindowEvent::Resized(_) => {
-                    if let Err(e) = triton_renderer
-                        .resize()
-                        .context("handling WindowEvent::Resized")
-                    {
-                        log::warn!("{}", e);
+                Event::WindowEvent { event, window_id }
+                    if window_id == game_loop.window_id().unwrap() =>
+                {
+                    match event {
+                        WindowEvent::Resized(_) => {
+                            if let Err(e) =
+                                game_loop.resize().context("handling WindowEvent::Resized")
+                            {
+                                log::warn!("{}", e);
+                            }
+                        }
+                        WindowEvent::ScaleFactorChanged { .. } => {
+                            if let Err(e) = game_loop
+                                .resize()
+                                .context("handling WindowEvent::ScaleFactorChanged")
+                            {
+                                log::warn!("{}", e);
+                            }
+                        }
+                        WindowEvent::CloseRequested => {
+                            elwt.exit();
+                        }
+                        _ => (),
                     }
                 }
-                WindowEvent::ScaleFactorChanged { .. } => {
-                    if let Err(e) = triton_renderer
-                        .resize()
-                        .context("handling WindowEvent::ScaleFactorChanged")
-                    {
-                        log::warn!("{}", e);
+
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    window_id,
+                    ..
+                } => {
+                    if let Some(current_window_id) = game_loop.window_id() {
+                        if window_id == current_window_id {
+                            elwt.exit();
+                        }
                     }
                 }
-                WindowEvent::CloseRequested => {
-                    *control_flow = ControlFlow::Exit;
+
+                Event::AboutToWait => {
+                    #[cfg(feature = "tracing")]
+                    let _span = span!(Level::INFO, "RedrawRequested").entered();
+                    game_loop.window_size().map(|image_extent| {
+                        let image_extent_arr: [u32; 2] = image_extent.into();
+                        if image_extent_arr.contains(&0) {
+                            return;
+                        }
+                        if let Err(e) = game_loop.update().context("rendering") {
+                            log::error!("{}", e);
+                        }
+                    });
                 }
                 _ => (),
             }
-        }
-
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            window_id,
-            ..
-        } => {
-            if let Some(current_window_id) = triton_renderer.window_id() {
-                if window_id == current_window_id {
-                    *control_flow = ControlFlow::Exit;
-                }
-            }
-        }
-
-        Event::RedrawRequested(window_id) => {
-            #[cfg(feature = "tracing")]
-            let _span = span!(Level::INFO, "RedrawRequested").entered();
-            triton_renderer
-                .window_id()
-                .and_then(|current_window_id| {
-                    if window_id == current_window_id {
-                        Some(())
-                    } else {
-                        None
-                    }
-                })
-                .and_then(|_| triton_renderer.window_size())
-                .map(|image_extent| {
-                    let image_extent_arr: [u32; 2] = image_extent.into();
-                    if image_extent_arr.contains(&0) {
-                        return;
-                    }
-                    if let Err(e) = triton_renderer.render().context("rendering") {
-                        log::error!("{}", e);
-                    }
-                });
-        }
-
-        Event::MainEventsCleared => {
-            if let Err(e) = triton_renderer
-                .request_redraw()
-                .context("requesting redraw")
-            {
-                log::warn!("{}", e);
-            }
-        }
-
-        _ => (),
-    })
+        })
+        .context("event loop")
 }

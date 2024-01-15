@@ -3,9 +3,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use cgmath::Matrix4;
 use vulkano::{
-    command_buffer::{
-        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SubpassBeginInfo, SubpassContents,
-    },
+    command_buffer::{RecordingCommandBuffer, SubpassBeginInfo, SubpassContents},
     render_pass::Framebuffer,
     sync::GpuFuture,
 };
@@ -19,7 +17,7 @@ pub struct Frame<'a> {
     num_pass: u8,
     pub framebuffer: Arc<Framebuffer>,
     before_main_cb_future: Option<Box<dyn GpuFuture>>,
-    pub command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
+    pub command_buffer_builder: Option<RecordingCommandBuffer>,
     pub world_to_framebuffer: Matrix4<f32>,
 }
 
@@ -28,7 +26,7 @@ impl<'a> Frame<'a> {
         system: &'a mut FrameSystem,
         framebuffer: Arc<Framebuffer>,
         before_main_cb_future: Option<Box<dyn GpuFuture>>,
-        command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
+        command_buffer_builder: Option<RecordingCommandBuffer>,
         world_to_framebuffer: Matrix4<f32>,
     ) -> Self {
         Frame {
@@ -75,8 +73,8 @@ impl<'a> Frame<'a> {
                     .command_buffer_builder
                     .take()
                     .context("take command buffer builder")?
-                    .build()
-                    .context("build")?;
+                    .end()
+                    .context("end")?;
 
                 let after_main_cb = self
                     .before_main_cb_future

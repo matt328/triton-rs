@@ -4,8 +4,9 @@ use anyhow::Context;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
+        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
+        RecordingCommandBuffer,
     },
     device::Queue,
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
@@ -91,7 +92,7 @@ impl GeometrySystem {
                     .into_pipeline_layout_create_info(device.clone())
                     .unwrap(),
             )
-            .unwrap();
+            .context("creating pipeline layout")?;
 
             GraphicsPipeline::new(
                 device.clone(),
@@ -116,7 +117,7 @@ impl GeometrySystem {
                     ..GraphicsPipelineCreateInfo::layout(layout)
                 },
             )
-            .unwrap()
+            .context("creating graphics pipeline")?
         };
 
         Ok(GeometrySystem {
@@ -129,20 +130,21 @@ impl GeometrySystem {
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
-    pub fn draw(
-        &self,
-        viewport_dimensions: [u32; 2],
-    ) -> anyhow::Result<Arc<SecondaryAutoCommandBuffer>> {
-        let mut builder = AutoCommandBufferBuilder::secondary(
-            self.command_buffer_allocator.as_ref(),
+    pub fn draw(&self, viewport_dimensions: [u32; 2]) -> anyhow::Result<Arc<CommandBuffer>> {
+        let mut builder = RecordingCommandBuffer::new(
+            self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-            CommandBufferInheritanceInfo {
-                render_pass: Some(self.subpass.clone().into()),
+            CommandBufferLevel::Secondary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::MultipleSubmit,
+                inheritance_info: Some(CommandBufferInheritanceInfo {
+                    render_pass: Some(self.subpass.clone().into()),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
-        )
-        .unwrap();
+        )?;
+
         builder
             .set_viewport(
                 0,
@@ -158,11 +160,14 @@ impl GeometrySystem {
             .bind_pipeline_graphics(self.pipeline.clone())
             .context("binding pipeline graphics")?
             .bind_vertex_buffers(0, self.vertex_buffer.clone())
-            .context("binding vertex buffers")?
-            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-            .context("drawing")?;
+            .context("binding vertex buffers")?;
+        unsafe {
+            builder
+                .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
+                .context("drawing")?;
+        }
 
-        builder.build().context("building command buffer")
+        builder.end().context("building command buffer")
     }
 }
 
@@ -195,11 +200,11 @@ mod fs {
             #version 450
 
             layout(location = 0) out vec4 f_color;
-            layout(location = 1) out vec3 f_normal;
+            layout(location = 1) out vec4 f_normal;
 
             void main() {
                 f_color = vec4(1.0, 1.0, 1.0, 1.0);
-                f_normal = vec3(0.0, 0.0, 1.0);
+                f_normal = vec4(0.0, 0.0, 1.0, 0.0);
             }
         ",
     }

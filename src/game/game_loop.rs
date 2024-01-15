@@ -1,18 +1,17 @@
-use log::info;
-use std::{sync::Arc, time::Instant};
+use anyhow::Context;
+use std::time::Instant;
 use tracing::{span, Level};
-use vulkano::instance::InstanceExtensions;
-use winit::{dpi::PhysicalSize, event::Event, window::Window};
+use winit::{dpi::PhysicalSize, event::Event, event_loop::EventLoop, window::WindowId};
 
 #[cfg(feature = "tracing")]
 use tracing_tracy::client::frame_mark;
 
-use crate::game::context::Context;
+use crate::Renderer;
 
-pub struct GameLoop<'a, 'b> {
+pub struct GameLoop {
     previous_instant: Instant,
     accumulated_time: f32,
-    context: Context<'a, 'b>,
+    renderer: Renderer,
 }
 
 const FPS: f32 = 60.0;
@@ -22,28 +21,35 @@ const UPS: f32 = 240.0;
 const MAX_FRAME_TIME: f32 = 1.0 / FPS;
 const FIXED_TIME_STEP: f32 = 1.0 / UPS;
 
-impl<'a, 'b> GameLoop<'a, 'b> {
-    pub fn new(
-        required_extensions: InstanceExtensions,
-        window: Arc<Window>,
-    ) -> anyhow::Result<Self> {
-        let context = Context::new(required_extensions, window.clone())?;
-
-        info!("Initialized Game");
-
+impl GameLoop {
+    pub fn new(event_loop: &EventLoop<()>) -> anyhow::Result<Self> {
+        let renderer = Renderer::new(event_loop).context("creating renderer")?;
         Ok(GameLoop {
             previous_instant: Instant::now(),
             accumulated_time: 0.0,
-            context,
+            renderer,
         })
     }
 
-    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        self.context.window_resized(new_size);
+    pub fn request_redraw(&self) -> anyhow::Result<()> {
+        self.renderer.request_redraw()
+    }
+
+    pub fn window_size(&self) -> Option<PhysicalSize<u32>> {
+        self.renderer.window_size()
+    }
+
+    pub fn window_id(&self) -> Option<WindowId> {
+        self.renderer.window_id()
+    }
+
+    pub fn resize(&mut self) -> anyhow::Result<()> {
+        self.renderer.resize()
     }
 
     pub fn process_winit_event(&mut self, event: &Event<()>, mouse_captured: bool) -> bool {
-        self.context.process_winit_event(event, mouse_captured)
+        // unimplemented!("not implemented yet")
+        true
     }
 
     /// Implements fixed timestep game loop https://gafferongames.com/post/fix_your_timestep/
@@ -64,10 +70,10 @@ impl<'a, 'b> GameLoop<'a, 'b> {
 
         let update_loop = span!(Level::INFO, "update loop").entered();
 
-        self.context.pre_update();
+        //self.context.pre_update();
 
         while self.accumulated_time >= FIXED_TIME_STEP {
-            self.context.update();
+            //self.context.update();
             self.accumulated_time -= FIXED_TIME_STEP;
         }
 
@@ -75,7 +81,8 @@ impl<'a, 'b> GameLoop<'a, 'b> {
 
         let blending_factor = self.accumulated_time / FIXED_TIME_STEP;
 
-        self.context.render(blending_factor)?;
+        self.renderer.render().context("rendering")?;
+        // self.context.render(blending_factor)?;
 
         #[cfg(feature = "tracing")]
         frame_mark();

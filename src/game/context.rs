@@ -1,12 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
+use anyhow::Context;
 use gilrs::Axis;
 use specs::{Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use tracing::{span, Level};
-use vulkano::instance::InstanceExtensions;
-use winit::{dpi::PhysicalSize, event::Event, keyboard::KeyCode, window::Window};
+use winit::{dpi::PhysicalSize, event::Event, event_loop::EventLoop};
 
-use crate::graphics::{RenderCoordinator, CUBE_INDICES, CUBE_VERTICES};
+use crate::Renderer;
 
 use super::{
     components::{
@@ -23,28 +23,27 @@ use super::{
 #[derive(Default)]
 pub struct InputStateResource(pub HashMap<String, ActionState>);
 
-pub struct Context<'a, 'b> {
+pub struct GameContext {
     input_system: InputSystem,
     world: World,
-    fixed_update_dispatcher: Dispatcher<'a, 'b>,
-    render_dispatcher: Dispatcher<'a, 'b>,
+    fixed_update_dispatcher: Dispatcher<'static, 'static>,
+    render_dispatcher: Dispatcher<'static, 'static>,
 }
 
-impl<'a, 'b> Context<'a, 'b> {
-    pub fn new(
-        required_extensions: InstanceExtensions,
-        window: Arc<Window>,
-    ) -> anyhow::Result<Self> {
-        let extent: [f32; 2] = window.inner_size().into();
-
-        let mut renderer = RenderCoordinator::new(required_extensions, window.clone())?;
+impl GameContext {
+    pub fn new(event_loop: &EventLoop<()>) -> anyhow::Result<Self> {
+        let mut renderer = Renderer::new(event_loop)?;
+        let extent: [f32; 2] = renderer
+            .window_size()
+            .context("getting window size")?
+            .into();
 
         let mut world = World::new();
 
         world.insert(ResizeEvents(Vec::new()));
         world.insert(InputStateResource(HashMap::new()));
 
-        let mesh_id = renderer.create_mesh(CUBE_VERTICES.into(), CUBE_INDICES.into())?;
+        let mesh_id = 1; // renderer.create_mesh(CUBE_VERTICES.into(), CUBE_INDICES.into())?;
 
         let mut fixed_update_dispatcher = DispatcherBuilder::new()
             .with(TransformSystem, "transform_system", &[])
@@ -91,7 +90,7 @@ impl<'a, 'b> Context<'a, 'b> {
         world
             .write_resource::<ResizeEvents>()
             .0
-            .push(window.inner_size());
+            .push(renderer.window_size().context("getting window size")?);
 
         let walk_forward_action = "walk_forward";
         let walk_backward_action = "walk_backward";
@@ -154,8 +153,8 @@ impl<'a, 'b> Context<'a, 'b> {
             .add_action_map(
                 "main",
                 ActionMap::new()
-                    .bind(Source::Keyboard(KeyCode::KeyW), walk_forward_action)
-                    .bind(Source::Keyboard(KeyCode::ArrowUp), walk_forward_action)
+                    // .bind(Source::Keyboard(KeyCode::KeyW), walk_forward_action)
+                    // .bind(Source::Keyboard(KeyCode::ArrowUp), walk_forward_action)
                     .bind(
                         Source::Gamepad(GamepadSource::Axis(Axis::LeftStickY)),
                         walk_forward_action,
@@ -164,14 +163,14 @@ impl<'a, 'b> Context<'a, 'b> {
                         Source::Gamepad(GamepadSource::Axis(Axis::LeftStickX)),
                         strafe_right_action,
                     )
-                    .bind(Source::Keyboard(KeyCode::KeyS), walk_backward_action)
-                    .bind(Source::Keyboard(KeyCode::ArrowDown), walk_backward_action)
-                    .bind(Source::Keyboard(KeyCode::KeyA), strafe_left_action)
-                    .bind(Source::Keyboard(KeyCode::ArrowLeft), strafe_left_action)
-                    .bind(Source::Keyboard(KeyCode::KeyD), strafe_right_action)
-                    .bind(Source::Keyboard(KeyCode::ArrowRight), strafe_right_action)
-                    .bind(Source::Keyboard(KeyCode::KeyQ), move_up_action)
-                    .bind(Source::Keyboard(KeyCode::KeyZ), move_down_action)
+                    // .bind(Source::Keyboard(KeyCode::KeyS), walk_backward_action)
+                    // .bind(Source::Keyboard(KeyCode::ArrowDown), walk_backward_action)
+                    // .bind(Source::Keyboard(KeyCode::KeyA), strafe_left_action)
+                    // .bind(Source::Keyboard(KeyCode::ArrowLeft), strafe_left_action)
+                    // .bind(Source::Keyboard(KeyCode::KeyD), strafe_right_action)
+                    // .bind(Source::Keyboard(KeyCode::ArrowRight), strafe_right_action)
+                    // .bind(Source::Keyboard(KeyCode::KeyQ), move_up_action)
+                    // .bind(Source::Keyboard(KeyCode::KeyZ), move_down_action)
                     .bind(
                         Source::Gamepad(GamepadSource::Axis(Axis::RightStickY)),
                         look_vertical_action,
@@ -190,7 +189,7 @@ impl<'a, 'b> Context<'a, 'b> {
                     ),
             );
 
-        Ok(Context {
+        Ok(GameContext {
             world,
             fixed_update_dispatcher,
             render_dispatcher,

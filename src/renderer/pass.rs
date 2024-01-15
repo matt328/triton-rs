@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use cgmath::{Matrix4, SquareMatrix, Vector3};
-use vulkano::{command_buffer::SecondaryCommandBufferAbstract, sync::GpuFuture};
+use vulkano::{command_buffer::CommandBuffer, sync::GpuFuture};
 
 use super::frame::Frame;
 
@@ -17,10 +17,7 @@ pub struct DrawPass<'f, 's: 'f> {
 }
 
 impl<'f, 's: 'f> DrawPass<'f, 's> {
-    pub fn execute(
-        &mut self,
-        command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
-    ) -> anyhow::Result<()> {
+    pub fn execute(&mut self, command_buffer: Arc<CommandBuffer>) -> anyhow::Result<()> {
         self.frame
             .command_buffer_builder
             .as_mut()

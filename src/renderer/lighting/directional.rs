@@ -4,11 +4,12 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
+        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
+        RecordingCommandBuffer,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
     image::view::ImageView,
@@ -177,15 +178,15 @@ impl Directional {
         normals_input: Arc<ImageView>,
         direction: Vector3<f32>,
         color: [f32; 3],
-    ) -> anyhow::Result<Arc<SecondaryAutoCommandBuffer>> {
+    ) -> anyhow::Result<Arc<CommandBuffer>> {
         let push_constants = fs::PushConstants {
             color: [color[0], color[1], color[2], 1.0],
             direction: direction.extend(0.0).into(),
         };
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
-        let descriptor_set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
+        let descriptor_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
             layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, color_input),
@@ -201,12 +202,16 @@ impl Directional {
             depth_range: 0.0..=1.0,
         };
 
-        let mut builder = AutoCommandBufferBuilder::secondary(
-            self.command_buffer_allocator.as_ref(),
+        let mut builder = RecordingCommandBuffer::new(
+            self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-            CommandBufferInheritanceInfo {
-                render_pass: Some(self.subpass.clone().into()),
+            CommandBufferLevel::Secondary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::MultipleSubmit,
+                inheritance_info: Some(CommandBufferInheritanceInfo {
+                    render_pass: Some(self.subpass.clone().into()),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
         )
@@ -221,10 +226,12 @@ impl Directional {
                 descriptor_set,
             )?
             .push_constants(self.pipeline.layout().clone(), 0, push_constants)?
-            .bind_vertex_buffers(0, self.vertex_buffer.clone())?
-            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)?;
+            .bind_vertex_buffers(0, self.vertex_buffer.clone())?;
+        unsafe {
+            builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0)?;
+        }
 
-        builder.build().context("command buffer builder")
+        builder.end().context("end command buffer builder")
     }
 }
 
