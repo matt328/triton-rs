@@ -1,15 +1,24 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use cgmath::Matrix4;
+use tracing::{span, Level};
 use vulkano::{
-    buffer::Subbuffer,
+    buffer::{
+        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
+        BufferUsage, Subbuffer,
+    },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
         CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
         RecordingCommandBuffer,
     },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, DescriptorSetsCollection,
+        WriteDescriptorSet,
+    },
     device::Queue,
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
@@ -22,13 +31,20 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
 };
 
+use crate::game::Transform;
+
 use super::{
-    geometry_shaders::{fs, vs, VertexPositionColorNormal},
+    geometry_shaders::{
+        fs,
+        vs::{self, FrameData, ObjectData},
+        VertexPositionColorNormal,
+    },
+    mesh::MeshBuilder,
     render_data::RenderData,
 };
 
@@ -37,7 +53,11 @@ pub struct GeometrySystem {
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
     render_data: RenderData,
+    storage_buffer_allocator: SubbufferAllocator,
+    uniform_buffer_allocator: SubbufferAllocator,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 }
 
 /*
@@ -115,17 +135,46 @@ impl GeometrySystem {
             .context("creating graphics pipeline")?
         };
 
+        let storage_buffer_allocator = SubbufferAllocator::new(
+            memory_allocator.clone(),
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::STORAGE_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+        );
+
+        let uniform_buffer_allocator = SubbufferAllocator::new(
+            memory_allocator.clone(),
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+        );
+
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            gfx_queue.device().clone(),
+            Default::default(),
+        ));
+
         Ok(GeometrySystem {
             gfx_queue,
             subpass,
             pipeline,
             command_buffer_allocator,
+            memory_allocator,
             render_data: { Default::default() },
+            storage_buffer_allocator,
+            uniform_buffer_allocator,
+            descriptor_set_allocator,
         })
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
-    pub fn draw(&self, viewport_dimensions: [u32; 2]) -> anyhow::Result<Arc<CommandBuffer>> {
+    pub fn draw(&mut self, viewport_dimensions: [u32; 2]) -> anyhow::Result<Arc<CommandBuffer>> {
         let mut builder = RecordingCommandBuffer::new(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
@@ -140,6 +189,8 @@ impl GeometrySystem {
             },
         )?;
 
+        let descriptor_sets = self.create_descriptor_sets(&self.render_data)?;
+
         builder
             .set_viewport(
                 0,
@@ -153,18 +204,103 @@ impl GeometrySystem {
             )
             .context("setting viewport")?
             .bind_pipeline_graphics(self.pipeline.clone())
-            .context("binding pipeline graphics")?;
+            .context("binding pipeline graphics")?
+            .bind_descriptor_sets(
+                vulkano::pipeline::PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
+                descriptor_sets,
+            )
+            .context("binding descriptor sets")?;
 
-        builder
-            .bind_vertex_buffers(0, self.vertex_buffer.clone())
-            .context("binding vertex buffers")?;
-
-        unsafe {
-            builder
-                .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-                .context("drawing")?;
+        for data in self.render_data.render_iter() {
+            let (index, mesh) = data;
+            unsafe {
+                builder
+                    .bind_vertex_buffers(0, mesh.vertex_buffer.clone())?
+                    .bind_index_buffer(mesh.index_buffer.clone())?
+                    .draw_indexed(mesh.index_buffer.len() as u32, 1, 0, 0, index)
+            }?;
         }
 
+        self.render_data.reset_object_data();
+
         builder.end().context("building command buffer")
+    }
+
+    pub fn create_mesh(
+        &mut self,
+        verts: Vec<VertexPositionColorNormal>,
+        indices: Vec<u16>,
+    ) -> anyhow::Result<usize> {
+        let position = self.render_data.mesh_position();
+        let mesh = MeshBuilder::default()
+            .with_vertices(verts)
+            .with_indices(indices)
+            .build(self.memory_allocator.clone())
+            .context("building mesh")?;
+        self.render_data.add_mesh(mesh);
+        Ok(position)
+    }
+
+    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: Transform) {
+        let d = ObjectData {
+            model: transform.model().into(),
+        };
+        self.render_data.add_object_data(mesh_id, d);
+    }
+
+    pub fn set_camera_params(&mut self, cam_matrices: (Matrix4<f32>, Matrix4<f32>)) {
+        self.render_data.update_cam_matrices(cam_matrices);
+    }
+
+    fn create_descriptor_sets(
+        &self,
+        render_data: &RenderData,
+    ) -> anyhow::Result<impl DescriptorSetsCollection> {
+        // Update the object data buffer
+        let object_buffer_span = span!(Level::INFO, "update object buffer").entered();
+
+        let objects = render_data.object_data();
+
+        let object_data_buffer = self
+            .storage_buffer_allocator
+            .allocate_slice(objects.len() as _)?;
+
+        object_data_buffer.write()?.copy_from_slice(&objects);
+
+        object_buffer_span.exit();
+
+        // (re)create the object data descriptor set
+        let span_ds = span!(Level::INFO, "create object descriptor set").entered();
+        let object_data_buffer_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
+            self.pipeline.layout().set_layouts()[1].clone(),
+            [WriteDescriptorSet::buffer(0, object_data_buffer)],
+            [],
+        )
+        .context("Creating Object Data Descriptor Set")?;
+        span_ds.exit();
+
+        // Update the uniform buffer
+        let uniform_buffer: Subbuffer<FrameData> =
+            self.uniform_buffer_allocator.allocate_sized()?;
+
+        *uniform_buffer.write()? = FrameData {
+            view: render_data.cam_matrices().1.into(),
+            proj: render_data.cam_matrices().0.into(),
+        };
+
+        // (re)create the uniform buffer descriptor set
+        let uniform_set = span!(Level::INFO, "create uniform descriptor set").entered();
+        let uniform_buffer_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
+            self.pipeline.layout().set_layouts()[0].clone(),
+            [WriteDescriptorSet::buffer(0, uniform_buffer)],
+            [],
+        )
+        .context("creating uniform buffer descriptor set")?;
+        uniform_set.exit();
+        Ok(vec![uniform_buffer_set, object_data_buffer_set])
     }
 }

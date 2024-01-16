@@ -6,6 +6,7 @@ use vulkano::{
     command_buffer::allocator::{
         StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
     },
+    device::DeviceExtensions,
     instance::{
         debug::{
             DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessengerCallback,
@@ -33,9 +34,16 @@ pub struct Renderer {
 #[cfg(feature = "tracing")]
 use tracing_tracy::client::frame_mark;
 
+use super::geometry_shaders::VertexPositionColorNormal;
+
 impl Renderer {
     pub fn new(event_loop: &EventLoop<()>) -> anyhow::Result<Self> {
         let context = VulkanoContext::new(VulkanoConfig {
+            device_extensions: DeviceExtensions {
+                khr_swapchain: true,
+                khr_shader_draw_parameters: true,
+                ..Default::default()
+            },
             instance_create_info: InstanceCreateInfo {
                 enabled_extensions: InstanceExtensions {
                     ext_debug_utils: true,
@@ -147,9 +155,13 @@ impl Renderer {
         })
     }
 
-    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: Transform) {}
+    pub fn enqueue_mesh(&mut self, mesh_id: usize, transform: Transform) {
+        self.geometry_system.enqueue_mesh(mesh_id, transform);
+    }
 
-    pub fn set_camera_params(&self, matrices: (Matrix4<f32>, Matrix4<f32>)) {}
+    pub fn set_camera_params(&mut self, matrices: (Matrix4<f32>, Matrix4<f32>)) {
+        self.geometry_system.set_camera_params(matrices);
+    }
 
     pub fn resize(&mut self) -> anyhow::Result<()> {
         self.windows
@@ -212,6 +224,14 @@ impl Renderer {
         );
 
         Ok(())
+    }
+
+    pub fn create_mesh(
+        &mut self,
+        verts: Vec<VertexPositionColorNormal>,
+        indices: Vec<u16>,
+    ) -> anyhow::Result<usize> {
+        self.geometry_system.create_mesh(verts, indices)
     }
 
     fn render_lighting(mut lighting: LightingPass<'_, '_>) -> anyhow::Result<()> {

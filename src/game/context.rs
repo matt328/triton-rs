@@ -8,7 +8,10 @@ use winit::{
     dpi::PhysicalSize, event::Event, event_loop::EventLoop, keyboard::KeyCode, window::WindowId,
 };
 
-use crate::Renderer;
+use crate::{
+    renderer::{CUBE_INDICES, CUBE_VERTICES},
+    Renderer,
+};
 
 use super::{
     components::{
@@ -35,7 +38,7 @@ pub struct GameContext {
 
 impl GameContext {
     pub fn new(event_loop: &EventLoop<()>) -> anyhow::Result<Self> {
-        let renderer = Renderer::new(event_loop)?;
+        let mut renderer = Renderer::new(event_loop)?;
         let extent_physical_size = renderer.window_size().context("getting window size")?;
         let extent: [f32; 2] = extent_physical_size.into();
 
@@ -48,7 +51,7 @@ impl GameContext {
         world.insert(CurrentWindowId(window_id));
         world.insert(InputStateResource(HashMap::new()));
 
-        let mesh_id = 1; // renderer.create_mesh(CUBE_VERTICES.into(), CUBE_INDICES.into())?;
+        let mesh_id = renderer.create_mesh(CUBE_VERTICES.into(), CUBE_INDICES.into())?;
 
         let mut fixed_update_dispatcher = DispatcherBuilder::new()
             .with(TransformSystem, "transform_system", &[])
