@@ -6,6 +6,13 @@ use vulkano::{
     command_buffer::allocator::{
         StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
     },
+    instance::{
+        debug::{
+            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessengerCallback,
+            DebugUtilsMessengerCreateInfo,
+        },
+        InstanceCreateInfo, InstanceExtensions,
+    },
     sync::{self, GpuFuture},
 };
 use vulkano_util::{
@@ -28,7 +35,66 @@ use tracing_tracy::client::frame_mark;
 
 impl Renderer {
     pub fn new(event_loop: &EventLoop<()>) -> anyhow::Result<Self> {
-        let context = VulkanoContext::new(VulkanoConfig::default());
+        let context = VulkanoContext::new(VulkanoConfig {
+            instance_create_info: InstanceCreateInfo {
+                enabled_extensions: InstanceExtensions {
+                    ext_debug_utils: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            debug_create_info: Some(DebugUtilsMessengerCreateInfo {
+                message_severity: DebugUtilsMessageSeverity::ERROR
+                    | DebugUtilsMessageSeverity::WARNING
+                    | DebugUtilsMessageSeverity::INFO
+                    | DebugUtilsMessageSeverity::VERBOSE,
+                message_type: DebugUtilsMessageType::GENERAL
+                    | DebugUtilsMessageType::VALIDATION
+                    | DebugUtilsMessageType::PERFORMANCE,
+                ..DebugUtilsMessengerCreateInfo::user_callback(unsafe {
+                    DebugUtilsMessengerCallback::new(
+                        |message_severity, message_type, callback_data| {
+                            let severity = if message_severity
+                                .intersects(DebugUtilsMessageSeverity::ERROR)
+                            {
+                                "error"
+                            } else if message_severity
+                                .intersects(DebugUtilsMessageSeverity::WARNING)
+                            {
+                                "warning"
+                            } else if message_severity.intersects(DebugUtilsMessageSeverity::INFO) {
+                                "information"
+                            } else if message_severity
+                                .intersects(DebugUtilsMessageSeverity::VERBOSE)
+                            {
+                                "verbose"
+                            } else {
+                                panic!("no-impl");
+                            };
+
+                            let ty = if message_type.intersects(DebugUtilsMessageType::GENERAL) {
+                                "general"
+                            } else if message_type.intersects(DebugUtilsMessageType::VALIDATION) {
+                                "validation"
+                            } else if message_type.intersects(DebugUtilsMessageType::PERFORMANCE) {
+                                "performance"
+                            } else {
+                                panic!("no-impl");
+                            };
+
+                            log::debug!(
+                                "{} {} {}: {}",
+                                callback_data.message_id_name.unwrap_or("unknown"),
+                                ty,
+                                severity,
+                                callback_data.message
+                            );
+                        },
+                    )
+                })
+            }),
+            ..Default::default()
+        });
 
         let mut windows = VulkanoWindows::default();
 
@@ -86,21 +152,10 @@ impl Renderer {
     pub fn set_camera_params(&self, matrices: (Matrix4<f32>, Matrix4<f32>)) {}
 
     pub fn resize(&mut self) -> anyhow::Result<()> {
-        if let Some(renderer) = self.windows.get_primary_renderer_mut() {
-            renderer.resize();
-            Ok(())
-        } else {
-            Err(anyhow!("No Primary Renderer available"))
-        }
-    }
-
-    pub fn request_redraw(&self) -> anyhow::Result<()> {
-        if let Some(window) = self.windows.get_primary_window() {
-            window.request_redraw();
-            Ok(())
-        } else {
-            Err(anyhow!("No Primary Window available"))
-        }
+        self.windows
+            .get_primary_renderer_mut()
+            .ok_or_else(|| anyhow!("No primary renderer available"))
+            .map(|renderer| renderer.resize())
     }
 
     pub fn window_size(&self) -> Option<PhysicalSize<u32>> {

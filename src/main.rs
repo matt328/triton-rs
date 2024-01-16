@@ -68,18 +68,6 @@ pub fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    window_id,
-                    ..
-                } => {
-                    if let Some(current_window_id) = game_loop.window_id() {
-                        if window_id == current_window_id {
-                            elwt.exit();
-                        }
-                    }
-                }
-
                 Event::AboutToWait => {
                     #[cfg(feature = "tracing")]
                     let _span = span!(Level::INFO, "Event::AboutToWait").entered();

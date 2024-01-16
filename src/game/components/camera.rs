@@ -7,7 +7,7 @@ use tracing::{event, Level};
 
 use crate::game::context::InputStateResource;
 
-use super::{CurrentWindowSize, ResizeEvents};
+use super::CurrentWindowSize;
 
 #[derive(Component, Debug, Clone, Copy)]
 #[storage(VecStorage)]
