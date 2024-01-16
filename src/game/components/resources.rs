@@ -14,3 +14,6 @@ pub struct CurrentWindowId(pub Option<WindowId>);
 
 #[derive(Default)]
 pub struct CurrentWindowSize(pub Option<PhysicalSize<u32>>);
+
+#[derive(Default)]
+pub struct CursorCaptured(pub Option<bool>);

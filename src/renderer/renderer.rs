@@ -20,7 +20,11 @@ use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
     window::{VulkanoWindows, WindowDescriptor},
 };
-use winit::{dpi::PhysicalSize, event_loop::EventLoop, window::WindowId};
+use winit::{
+    dpi::PhysicalSize,
+    event_loop::EventLoop,
+    window::{CursorGrabMode, WindowId},
+};
 
 use crate::{game::Transform, FrameSystem, GeometrySystem, LightingPass, Pass};
 
@@ -176,6 +180,20 @@ impl Renderer {
 
     pub fn window_id(&self) -> Option<WindowId> {
         self.windows.primary_window_id()
+    }
+
+    pub fn set_cursor_captured(&self, captured: bool) {
+        if let Some(window) = self.windows.get_primary_window() {
+            if captured {
+                window
+                    .set_cursor_grab(CursorGrabMode::Confined)
+                    .or_else(|_e| window.set_cursor_grab(CursorGrabMode::Locked));
+                window.set_cursor_visible(false);
+            } else {
+                window.set_cursor_grab(CursorGrabMode::None);
+                window.set_cursor_visible(true);
+            }
+        }
     }
 
     pub fn render(&mut self) -> anyhow::Result<()> {

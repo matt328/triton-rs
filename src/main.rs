@@ -1,8 +1,9 @@
 use anyhow::Context;
 use triton::GameLoop;
 use winit::{
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
 };
 
 #[cfg(feature = "tracing")]
@@ -37,9 +38,11 @@ pub fn main() -> anyhow::Result<()> {
 
     log::info!("Constructed Game Loop");
 
+    let mut mouse_captured = false;
+
     event_loop
         .run(move |event, elwt| {
-            game_loop.process_winit_event(&event, false);
+            game_loop.process_winit_event(&event, mouse_captured);
 
             match event {
                 Event::WindowEvent { event, window_id }
@@ -64,6 +67,28 @@ pub fn main() -> anyhow::Result<()> {
                         WindowEvent::CloseRequested => {
                             elwt.exit();
                         }
+                        WindowEvent::MouseInput { state, button, .. } => match (state, button) {
+                            (ElementState::Released, MouseButton::Left) => {
+                                log::info!("Capturing Mouse");
+                                game_loop.set_cursor_captured();
+                                mouse_captured = true;
+                            }
+                            (ElementState::Released, MouseButton::Right) => {
+                                game_loop.set_cursor_released();
+                                mouse_captured = false;
+                            }
+                            _ => (),
+                        },
+                        WindowEvent::KeyboardInput {
+                            device_id: _,
+                            event,
+                            is_synthetic: _,
+                        } => {
+                            if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
+                                game_loop.set_cursor_released();
+                                mouse_captured = false;
+                            }
+                        }
                         _ => (),
                     }
                 }
@@ -81,6 +106,7 @@ pub fn main() -> anyhow::Result<()> {
                         }
                     });
                 }
+
                 _ => (),
             }
         })

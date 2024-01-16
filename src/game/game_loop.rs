@@ -31,6 +31,14 @@ impl GameLoop {
         })
     }
 
+    pub fn set_cursor_captured(&mut self) {
+        self.context.set_cursor_captured();
+    }
+
+    pub fn set_cursor_released(&mut self) {
+        self.context.set_cursor_released();
+    }
+
     pub fn window_size(&self) -> Option<PhysicalSize<u32>> {
         self.context.window_size()
     }

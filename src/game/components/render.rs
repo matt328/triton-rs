@@ -7,7 +7,7 @@ use crate::Renderer;
 use super::{
     resources::{BlendFactor, ResizeEvents},
     transform::Transform,
-    ActiveCamera, Camera, CurrentWindowId, CurrentWindowSize,
+    ActiveCamera, Camera, CurrentWindowId, CurrentWindowSize, CursorCaptured,
 };
 
 #[derive(Component, Debug)]
@@ -36,6 +36,7 @@ impl<'a> System<'a> for RenderSystem {
         ReadStorage<'a, Transform>,
         ReadStorage<'a, Camera>,
         ReadStorage<'a, Renderable>,
+        Read<'a, CursorCaptured>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
@@ -48,6 +49,7 @@ impl<'a> System<'a> for RenderSystem {
             transforms,
             cameras,
             meshes,
+            cursor_captured,
         ) = data;
 
         // Handle Resize Events
@@ -59,6 +61,10 @@ impl<'a> System<'a> for RenderSystem {
 
         current_window_size.0 = self.renderer.window_size();
         current_window_id.0 = self.renderer.window_id();
+
+        if let Some(captured) = cursor_captured.0 {
+            self.renderer.set_cursor_captured(captured);
+        }
 
         // Apply Active Camera's matrices
         if let Some(active_cam) = active_camera {

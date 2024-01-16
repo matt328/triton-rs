@@ -18,7 +18,7 @@ use super::{
         render::{RenderSystem, Renderable},
         transform::{Transform, TransformSystem},
         ActiveCamera, BlendFactor, Camera, CameraSystem, CurrentWindowId, CurrentWindowSize,
-        ResizeEvents,
+        CursorCaptured, ResizeEvents,
     },
     input::{
         ActionDescriptor, ActionKind, ActionMap, ActionState, GamepadSource, InputSystem,
@@ -50,6 +50,7 @@ impl GameContext {
         world.insert(CurrentWindowSize(Some(extent_physical_size)));
         world.insert(CurrentWindowId(window_id));
         world.insert(InputStateResource(HashMap::new()));
+        world.insert(CursorCaptured(Some(false)));
 
         let mesh_id = renderer.create_mesh(CUBE_VERTICES.into(), CUBE_INDICES.into())?;
 
@@ -238,5 +239,13 @@ impl GameContext {
 
     pub fn window_id(&self) -> Option<WindowId> {
         self.world.read_resource::<CurrentWindowId>().0
+    }
+
+    pub fn set_cursor_captured(&self) {
+        self.world.write_resource::<CursorCaptured>().0 = Some(true);
+    }
+
+    pub fn set_cursor_released(&self) {
+        self.world.write_resource::<CursorCaptured>().0 = Some(false);
     }
 }
