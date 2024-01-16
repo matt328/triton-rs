@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+    buffer::Subbuffer,
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
         CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
         RecordingCommandBuffer,
     },
     device::Queue,
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
@@ -27,14 +27,17 @@ use vulkano::{
     render_pass::Subpass,
 };
 
-use super::geometry_shaders::VertexPositionColorNormal;
+use super::{
+    geometry_shaders::{fs, vs, VertexPositionColorNormal},
+    render_data::RenderData,
+};
 
 pub struct GeometrySystem {
     gfx_queue: Arc<Queue>,
-    vertex_buffer: Subbuffer<[VertexPositionColorNormal]>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    render_data: RenderData,
 }
 
 /*
@@ -61,32 +64,6 @@ impl GeometrySystem {
         memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     ) -> anyhow::Result<Self> {
-        let vertices = [
-            TriangleVertex {
-                position: [-0.5, -0.25],
-            },
-            TriangleVertex {
-                position: [0.0, 0.5],
-            },
-            TriangleVertex {
-                position: [0.25, -0.1],
-            },
-        ];
-        let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        )
-        .expect("failed to create buffer");
-
         let pipeline = {
             let device = gfx_queue.device();
             let vs = vs::load(device.clone())
@@ -97,7 +74,7 @@ impl GeometrySystem {
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
-            let vertex_input_state = TriangleVertex::per_vertex()
+            let vertex_input_state = VertexPositionColorNormal::per_vertex()
                 .definition(&vs.info().input_interface)
                 .unwrap();
             let stages = [
@@ -140,10 +117,10 @@ impl GeometrySystem {
 
         Ok(GeometrySystem {
             gfx_queue,
-            vertex_buffer,
             subpass,
             pipeline,
             command_buffer_allocator,
+            render_data: { Default::default() },
         })
     }
 
@@ -176,9 +153,12 @@ impl GeometrySystem {
             )
             .context("setting viewport")?
             .bind_pipeline_graphics(self.pipeline.clone())
-            .context("binding pipeline graphics")?
+            .context("binding pipeline graphics")?;
+
+        builder
             .bind_vertex_buffers(0, self.vertex_buffer.clone())
             .context("binding vertex buffers")?;
+
         unsafe {
             builder
                 .draw(self.vertex_buffer.len() as u32, 1, 0, 0)

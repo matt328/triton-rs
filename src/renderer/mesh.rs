@@ -6,16 +6,16 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
 };
 
-use super::shaders::VertexPositionColor;
+use super::geometry_shaders::VertexPositionColorNormal;
 
 #[derive(Default)]
 pub struct MeshBuilder {
-    vertices: Option<Vec<VertexPositionColor>>,
+    vertices: Option<Vec<VertexPositionColorNormal>>,
     indices: Option<Vec<u16>>,
 }
 
 impl MeshBuilder {
-    pub fn with_vertices(mut self, value: Vec<VertexPositionColor>) -> Self {
+    pub fn with_vertices(mut self, value: Vec<VertexPositionColorNormal>) -> Self {
         self.vertices = Some(value);
         self
     }
@@ -67,6 +67,6 @@ impl MeshBuilder {
 }
 
 pub struct BasicMesh {
-    pub vertex_buffer: Subbuffer<[VertexPositionColor]>,
+    pub vertex_buffer: Subbuffer<[VertexPositionColorNormal]>,
     pub index_buffer: Subbuffer<[u16]>,
 }
