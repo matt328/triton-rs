@@ -7,6 +7,8 @@ pub use renderer::Renderer;
 mod frame;
 mod frame_system;
 mod geometry;
+mod geometry_shaders;
 mod lighting;
+mod mesh;
 mod pass;
 mod renderer;

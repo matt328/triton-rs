@@ -27,13 +27,31 @@ use vulkano::{
     render_pass::Subpass,
 };
 
+use super::geometry_shaders::VertexPositionColorNormal;
+
 pub struct GeometrySystem {
     gfx_queue: Arc<Queue>,
-    vertex_buffer: Subbuffer<[TriangleVertex]>,
+    vertex_buffer: Subbuffer<[VertexPositionColorNormal]>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 }
+
+/*
+    TODO:
+    - remove vertex data from this class.
+    - add a RenderData to this class
+    - Add methods to the renderer to delegate into this class's RenderData
+    - Add create_mesh method to this class
+
+    - change this method's draw call to draw all the data the RenderData has.
+    - change the draw call to draw indexed like the other renderer does
+
+    - update the shader to use the object data, as well as the camera data
+    - add or update this System's descriptor set to pass the object data and camera data
+      to the shader.
+    - That should be it?
+*/
 
 impl GeometrySystem {
     /// Initializes a triangle drawing system.
@@ -168,44 +186,5 @@ impl GeometrySystem {
         }
 
         builder.end().context("building command buffer")
-    }
-}
-
-#[derive(BufferContents, Vertex)]
-#[repr(C)]
-struct TriangleVertex {
-    #[format(R32G32_SFLOAT)]
-    position: [f32; 2],
-}
-
-mod vs {
-    vulkano_shaders::shader! {
-        ty: "vertex",
-        src: r"
-            #version 450
-
-            layout(location = 0) in vec2 position;
-
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-            }
-        ",
-    }
-}
-
-mod fs {
-    vulkano_shaders::shader! {
-        ty: "fragment",
-        src: r"
-            #version 450
-
-            layout(location = 0) out vec4 f_color;
-            layout(location = 1) out vec4 f_normal;
-
-            void main() {
-                f_color = vec4(1.0, 1.0, 1.0, 1.0);
-                f_normal = vec4(0.0, 0.0, 1.0, 0.0);
-            }
-        ",
     }
 }
