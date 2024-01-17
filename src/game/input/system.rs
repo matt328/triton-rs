@@ -198,6 +198,7 @@ impl InputSystem {
         true
     }
 
+    #[allow(dead_code)]
     pub fn get_action_state(&self, action_name: &str) -> Option<&ActionState> {
         self.action_state_map.get(action_name)
     }
@@ -206,6 +207,7 @@ impl InputSystem {
         &self.action_state_map
     }
 
+    #[allow(dead_code)]
     pub fn activate_action_map(mut self, name: &str) -> anyhow::Result<()> {
         if self.action_map_map.contains_key(name) {
             self.current_action_map = name.to_string();
@@ -216,6 +218,7 @@ impl InputSystem {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub enum MouseButton {
     Left,

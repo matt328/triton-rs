@@ -185,12 +185,12 @@ impl Renderer {
     pub fn set_cursor_captured(&self, captured: bool) {
         if let Some(window) = self.windows.get_primary_window() {
             if captured {
-                window
+                let _ = window
                     .set_cursor_grab(CursorGrabMode::Confined)
                     .or_else(|_e| window.set_cursor_grab(CursorGrabMode::Locked));
                 window.set_cursor_visible(false);
             } else {
-                window.set_cursor_grab(CursorGrabMode::None);
+                let _ = window.set_cursor_grab(CursorGrabMode::None);
                 window.set_cursor_visible(true);
             }
         }
@@ -253,7 +253,7 @@ impl Renderer {
     }
 
     fn render_lighting(mut lighting: LightingPass<'_, '_>) -> anyhow::Result<()> {
-        lighting.ambient_light([0.1, 0.1, 0.1])?;
+        lighting.ambient_light([0.01, 0.01, 0.01])?;
         lighting.directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6])?;
         lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0])?;
         lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0])?;

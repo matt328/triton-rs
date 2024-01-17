@@ -13,13 +13,16 @@ pub enum Source {
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
 pub enum GamepadSource {
     Axis(Axis),
+    #[allow(dead_code)]
     Button(Button),
 }
 
 #[derive(Eq, Hash, PartialEq, Debug)]
 pub enum MouseSource {
+    #[allow(dead_code)]
     Button(SystemMouseButton),
     Move(MouseAxis),
+    #[allow(dead_code)]
     Scroll(MouseAxis),
 }
 #[derive(Eq, Hash, PartialEq, Copy, Clone, Debug)]
