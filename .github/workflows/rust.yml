@@ -33,6 +33,10 @@ jobs:
           vulkan-components: Vulkan-Headers, Vulkan-Loader
           vulkan-use-cache: true
 
+      - name: Install Linux Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libudev-sys
+
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
         run: choco install llvm ninja

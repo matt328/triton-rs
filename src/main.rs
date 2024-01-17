@@ -6,6 +6,17 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
 };
 
+/*
+    TODO:
+
+    - Add support for multiple frames in flight
+    - Add additional (temporary) render passes
+        - egui
+        - light indicators
+    - General code cleanup / retrospective on deferred renderer
+        - renderer module is getting large
+*/
+
 #[cfg(feature = "tracing")]
 use tracing::{span, Level};
 #[cfg(feature = "tracing")]
