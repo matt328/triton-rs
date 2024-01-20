@@ -253,8 +253,8 @@ impl Renderer {
     }
 
     fn render_lighting(mut lighting: LightingPass<'_, '_>) -> anyhow::Result<()> {
-        lighting.ambient_light([0.01, 0.01, 0.01])?;
-        lighting.directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6])?;
+        lighting.ambient_light([0.1, 0.1, 0.1])?;
+        lighting.directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.0, 0.0])?;
         lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0])?;
         lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0])?;
         lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0])?;
